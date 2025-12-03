@@ -9,6 +9,7 @@ import {
   onSnapshot,
   updateDoc,
   getDocs,
+  deleteDoc,
 } from "firebase/firestore";
 import {
   Terminal,
@@ -162,9 +163,23 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = "hcm-quiz-race";
 
+// Helper: Lấy hoặc tạo player ID cố định (lưu localStorage)
+const getOrCreatePlayerId = () => {
+  let playerId = localStorage.getItem("hcm_quiz_player_id");
+  if (!playerId) {
+    playerId =
+      "player_" +
+      Math.random().toString(36).substring(2, 15) +
+      Date.now().toString(36);
+    localStorage.setItem("hcm_quiz_player_id", playerId);
+  }
+  return playerId;
+};
+
 // --- MAIN COMPONENT ---
 export default function DuckRaceApp() {
   const [user, setUser] = useState(null);
+  const [playerId] = useState(getOrCreatePlayerId); // ID cố định từ localStorage
   const [playerName, setPlayerName] = useState("");
   const [hasJoined, setHasJoined] = useState(false);
   const [players, setPlayers] = useState([]);
@@ -193,9 +208,37 @@ export default function DuckRaceApp() {
     return () => unsubscribe();
   }, []);
 
+  // --- AUTO LEAVE WHEN CLOSING TAB ---
+  useEffect(() => {
+    if (!playerId || !hasJoined) return;
+
+    const handleBeforeUnload = () => {
+      // Xóa player khỏi Firestore ngay khi đóng tab/thoát trang
+      const playerRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "players",
+        playerId
+      );
+      deleteDoc(playerRef).catch(() => {});
+
+      // Xóa localStorage để tạo player mới khi vào lại
+      localStorage.removeItem("hcm_quiz_player_id");
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [playerId, hasJoined]);
+
   // --- FIRESTORE LISTENERS ---
   useEffect(() => {
-    if (!user) return;
+    if (!user || !playerId) return;
 
     const gameStateRef = doc(
       db,
@@ -244,7 +287,7 @@ export default function DuckRaceApp() {
       pList.sort((a, b) => b.score - a.score);
       setPlayers(pList);
 
-      const me = pList.find((p) => p.id === user.uid);
+      const me = pList.find((p) => p.id === playerId);
       if (me) {
         setHasJoined(true);
         setPlayerName(me.name);
@@ -255,18 +298,18 @@ export default function DuckRaceApp() {
       unsubGame();
       unsubPlayers();
     };
-  }, [user]);
+  }, [user, playerId]);
 
   // --- KEYBOARD LISTENER FOR RACING ---
   const handleRaceInput = useCallback(async () => {
-    if (!user || gameState.status !== "racing") return;
+    if (!playerId || gameState.status !== "racing") return;
 
     // Cooldown 50ms để chống lag
     const now = Date.now();
     if (now - lastPressTime.current < 50) return;
     lastPressTime.current = now;
 
-    const myPlayer = players.find((p) => p.id === user.uid);
+    const myPlayer = players.find((p) => p.id === playerId);
     if (!myPlayer) return;
 
     const newPosition = Math.min(
@@ -282,7 +325,7 @@ export default function DuckRaceApp() {
       "public",
       "data",
       "players",
-      user.uid
+      playerId
     );
     await updateDoc(playerRef, { position: newPosition });
 
@@ -299,10 +342,10 @@ export default function DuckRaceApp() {
       );
       await updateDoc(gameStateRef, {
         status: "answering",
-        winnerId: user.uid,
+        winnerId: playerId,
       });
     }
-  }, [user, gameState.status, gameState.winnerId, players]);
+  }, [playerId, gameState.status, gameState.winnerId, players]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -318,7 +361,7 @@ export default function DuckRaceApp() {
 
   // --- ACTIONS ---
   const joinGame = async () => {
-    if (!user || !playerName.trim()) return;
+    if (!playerId || !playerName.trim()) return;
     const playerRef = doc(
       db,
       "artifacts",
@@ -326,7 +369,7 @@ export default function DuckRaceApp() {
       "public",
       "data",
       "players",
-      user.uid
+      playerId
     );
     const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
 
@@ -372,7 +415,7 @@ export default function DuckRaceApp() {
   };
 
   const handleAnswer = async (optionIndex) => {
-    if (gameState.winnerId !== user?.uid) return;
+    if (gameState.winnerId !== playerId) return;
 
     const currentQ = QUESTIONS[gameState.currentQuestionIndex];
     const isCorrect = optionIndex === currentQ.answer;
@@ -386,9 +429,9 @@ export default function DuckRaceApp() {
         "public",
         "data",
         "players",
-        user.uid
+        playerId
       );
-      const myPlayer = players.find((p) => p.id === user.uid);
+      const myPlayer = players.find((p) => p.id === playerId);
       await updateDoc(playerRef, {
         score: (myPlayer?.score || 0) + POINTS_CORRECT,
       });
@@ -480,7 +523,7 @@ export default function DuckRaceApp() {
   };
 
   // --- RENDER HELPERS ---
-  const myPlayer = players.find((p) => p.id === user?.uid);
+  const myPlayer = players.find((p) => p.id === playerId);
   const currentQuestion = QUESTIONS[gameState.currentQuestionIndex];
   const winner = players.find((p) => p.id === gameState.winnerId);
   const top3Players = [...players]
@@ -574,7 +617,7 @@ export default function DuckRaceApp() {
             {gameState.status === "waiting" && (
               <div className="waiting-container">
                 <div className="waiting-icon">🎮</div>
-                <h2 className="waiting-title">TRANG ĐIỀU KHIỂN</h2>
+                <h2 className="waiting-title">VÀO MÀ CHIẾN ĐI ANH EM 🦆</h2>
                 <p className="waiting-text">
                   {players.length === 0
                     ? "Đang chờ người chơi..."
@@ -603,7 +646,7 @@ export default function DuckRaceApp() {
                   <div className="finish-line">
                     <span>ĐÍCH</span>
                   </div>
-                  {sortedByPosition.map((p, idx) => (
+                  {sortedByPosition.map((p) => (
                     <div key={p.id} className="player-lane">
                       <div className="lane-info">
                         <span>
@@ -725,7 +768,7 @@ export default function DuckRaceApp() {
                       <div
                         key={p.id}
                         className={`player-chip ${
-                          p.id === user?.uid ? "is-me" : ""
+                          p.id === playerId ? "is-me" : ""
                         }`}
                       >
                         <span>{p.avatar}</span> {p.name}
@@ -752,12 +795,12 @@ export default function DuckRaceApp() {
                     <div
                       key={p.id}
                       className={`player-lane ${
-                        p.id === user?.uid ? "my-lane" : ""
+                        p.id === playerId ? "my-lane" : ""
                       }`}
                     >
                       <div className="lane-info">
                         <span>
-                          {p.avatar} {p.name} {p.id === user?.uid && "(BẠN)"}
+                          {p.avatar} {p.name} {p.id === playerId && "(BẠN)"}
                         </span>
                         <span>{Math.round(p.position)}%</span>
                       </div>
@@ -768,7 +811,7 @@ export default function DuckRaceApp() {
                         />
                         <div
                           className={`duck ${
-                            p.id === user?.uid ? "duck-me" : ""
+                            p.id === playerId ? "duck-me" : ""
                           }`}
                           style={{ left: `${p.position}%` }}
                         >
@@ -789,7 +832,7 @@ export default function DuckRaceApp() {
             {/* Player - Answering (Winner only) */}
             {gameState.status === "answering" && currentQuestion && (
               <div className="question-view">
-                {gameState.winnerId === user?.uid ? (
+                {gameState.winnerId === playerId ? (
                   <>
                     <div className="winner-banner you-won">
                       🎉 BẠN VỀ ĐÍCH TRƯỚC! HÃY TRẢ LỜI! 🎉
@@ -871,7 +914,7 @@ export default function DuckRaceApp() {
                     <div
                       key={p.id}
                       className={`leaderboard-item ${
-                        p.id === user?.uid ? "is-me" : ""
+                        p.id === playerId ? "is-me" : ""
                       }`}
                     >
                       <span className="rank">#{idx + 1}</span>
@@ -972,7 +1015,7 @@ export default function DuckRaceApp() {
                     <div
                       key={p.id}
                       className={`result-item ${
-                        p.id === user?.uid ? "is-me" : ""
+                        p.id === playerId ? "is-me" : ""
                       }`}
                     >
                       <span className="result-rank">#{idx + 1}</span>
