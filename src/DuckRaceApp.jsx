@@ -152,6 +152,8 @@ const TOTAL_QUESTIONS = QUESTIONS.length;
 const FINISH_LINE = 100; // % để về đích
 const STEP_PER_CLICK = 2; // Mỗi click/space tiến bao nhiêu %
 const POINTS_CORRECT = 10;
+const POINTS_TIMEOUT = -5; // Trừ điểm khi hết giờ
+const ANSWER_TIME_LIMIT = 7; // Giây
 
 const AVATARS = [
   "🦆",
@@ -223,6 +225,8 @@ export default function DuckRaceApp() {
   const [showPowerUpGained, setShowPowerUpGained] = useState(null); // Hiện thông báo nhận power-up
   const [showPowerUpSelection, setShowPowerUpSelection] = useState(false); // Hiện UI chọn power-up
   const [showFreezeSelection, setShowFreezeSelection] = useState(false); // Hiện UI chọn người freeze
+  const [answerTimer, setAnswerTimer] = useState(7); // Bộ đếm giờ trả lời (7 giây)
+  const [showRules, setShowRules] = useState(false); // Hiện bảng nội quy
 
   const lastPressTime = useRef(0);
   const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
@@ -452,6 +456,65 @@ export default function DuckRaceApp() {
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, [handleRaceInput]);
+
+  // Hàm xử lý khi hết giờ trả lời
+  const handleTimeout = useCallback(async () => {
+    if (gameState.winnerId !== playerId) return; // Chỉ người thắng cuộc mới bị trừ điểm
+
+    const playerRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players",
+      playerId
+    );
+    const myPlayer = players.find((p) => p.id === playerId);
+
+    // Trừ 5 điểm và reset streak
+    await updateDoc(playerRef, {
+      score: Math.max(0, (myPlayer?.score || 0) + POINTS_TIMEOUT), // Không cho âm
+      streak: 0,
+    });
+
+    // Chuyển sang hiển thị đáp án (answer = null để hiện là timeout)
+    const gameStateRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "game_config",
+      "gameState"
+    );
+    await updateDoc(gameStateRef, {
+      status: "showing_answer",
+      winnerAnswer: -1, // -1 = timeout/không trả lời
+    });
+  }, [gameState.winnerId, playerId, players]);
+
+  // --- ANSWER TIMER (7 giây) ---
+  useEffect(() => {
+    if (gameState.status === "answering") {
+      // Reset timer khi bắt đầu trả lời
+      setAnswerTimer(ANSWER_TIME_LIMIT);
+
+      const interval = setInterval(() => {
+        setAnswerTimer((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            // Hết giờ! Xử lý timeout
+            handleTimeout();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [gameState.status, gameState.winnerId, handleTimeout]);
 
   // --- ACTIONS ---
   const joinGame = async () => {
@@ -814,11 +877,24 @@ export default function DuckRaceApp() {
           <Terminal className="icon icon-pulse" />
           <h1 className="header-title">TƯ TƯỞNG HỒ CHÍ MINH</h1>
         </div>
-        <div className="header-status">{statusText}</div>
-        {/* Streak indicator */}
-        {!isAdmin && myPlayer?.streak > 0 && (
-          <div className="streak-indicator">🔥 Streak: {myPlayer.streak}</div>
-        )}
+        <div className="header-center">
+          <div className="header-status">{statusText}</div>
+        </div>
+        <div className="header-right">
+          {/* Streak indicator */}
+          {!isAdmin && myPlayer?.streak > 0 && (
+            <div className="streak-indicator">🔥 Streak: {myPlayer.streak}</div>
+          )}
+          {/* Nút xem nội quy */}
+          {!isAdmin && hasJoined && gameState.status === "waiting" && (
+            <button
+              className="btn btn-rules"
+              onClick={() => setShowRules(true)}
+            >
+              📋 NỘI QUY
+            </button>
+          )}
+        </div>
       </header>
 
       <main className="main-content">
@@ -952,6 +1028,18 @@ export default function DuckRaceApp() {
                     🏆 <strong>{winner?.name}</strong> về đích trước!
                     {gameState.status === "answering" && " Đang trả lời..."}
                   </div>
+                  {/* Timer cho Admin */}
+                  {gameState.status === "answering" && (
+                    <div
+                      className={`answer-timer admin-timer ${
+                        answerTimer <= 3 ? "timer-urgent" : ""
+                      }`}
+                    >
+                      <span className="timer-icon">⏱️</span>
+                      <span className="timer-value">{answerTimer}</span>
+                      <span className="timer-text">giây</span>
+                    </div>
+                  )}
                   <div className="question-box">
                     <p className="question-number">
                       Câu {gameState.currentQuestionIndex + 1}/{TOTAL_QUESTIONS}
@@ -981,11 +1069,15 @@ export default function DuckRaceApp() {
                         className={`answer-feedback ${
                           gameState.winnerAnswer === currentQuestion.answer
                             ? "correct"
+                            : gameState.winnerAnswer === -1
+                            ? "timeout"
                             : "wrong"
                         }`}
                       >
                         {gameState.winnerAnswer === currentQuestion.answer
                           ? `✅ ${winner?.name} trả lời ĐÚNG! +${POINTS_CORRECT} điểm`
+                          : gameState.winnerAnswer === -1
+                          ? `⏰ ${winner?.name} HẾT GIờ! ${POINTS_TIMEOUT} điểm`
                           : `❌ ${winner?.name} trả lời SAI!`}
                       </div>
                     )}
@@ -1032,6 +1124,45 @@ export default function DuckRaceApp() {
                 <p className="waiting-text">
                   Đang chờ Admin bắt đầu cuộc đua...
                 </p>
+
+                {/* Bảng nội quy nhúng trong waiting */}
+                <div className="rules-inline">
+                  <h3>📋 NỘI QUY CHƠI GAME</h3>
+                  <ul>
+                    <li>
+                      🏁 <strong>Đua:</strong> Spam CLICK hoặc SPACE để tiến về
+                      đích
+                    </li>
+                    <li>
+                      🏆 <strong>Về đích:</strong> Ai về trước được trả lời câu
+                      hỏi
+                    </li>
+                    <li>
+                      ⏱️ <strong>Thời gian:</strong> Có 7 giây để trả lời
+                    </li>
+                    <li>
+                      ✅ <strong>Đúng:</strong> +10 điểm
+                    </li>
+                    <li>
+                      ❌ <strong>Sai:</strong> 0 điểm
+                    </li>
+                    <li>
+                      ⏰ <strong>Hết giờ:</strong> -5 điểm
+                    </li>
+                    <li>
+                      🔥 <strong>Streak:</strong> Đúng 3 câu liên tiếp = nhận
+                      vật phẩm
+                    </li>
+                    <li>
+                      ⚡ <strong>Vật phẩm:</strong> Tăng tốc, Đóng băng đối thủ,
+                      Bonus điểm
+                    </li>
+                    <li>
+                      🚫 <strong>Gian lận:</strong> Dùng macro sẽ bị phạt!
+                    </li>
+                  </ul>
+                </div>
+
                 <div className="players-list">
                   <h3>Người chơi đã vào:</h3>
                   <div className="players-grid">
@@ -1228,6 +1359,16 @@ export default function DuckRaceApp() {
                     <div className="winner-banner you-won">
                       🎉 BẠN VỀ ĐÍCH TRƯỚC! HÃY TRẢ LỜI! 🎉
                     </div>
+                    {/* Timer đếm ngược */}
+                    <div
+                      className={`answer-timer ${
+                        answerTimer <= 3 ? "timer-urgent" : ""
+                      }`}
+                    >
+                      <span className="timer-icon">⏱️</span>
+                      <span className="timer-value">{answerTimer}</span>
+                      <span className="timer-text">giây</span>
+                    </div>
                     <div className="question-box">
                       <p className="question-number">
                         Câu {gameState.currentQuestionIndex + 1}/
@@ -1256,6 +1397,16 @@ export default function DuckRaceApp() {
                     <h2>
                       {winner?.avatar} {winner?.name} đang trả lời...
                     </h2>
+                    {/* Timer cho người xem */}
+                    <div
+                      className={`answer-timer small ${
+                        answerTimer <= 3 ? "timer-urgent" : ""
+                      }`}
+                    >
+                      <span className="timer-icon">⏱️</span>
+                      <span className="timer-value">{answerTimer}</span>
+                      <span className="timer-text">giây</span>
+                    </div>
                     <p>Chờ xem kết quả nhé!</p>
                   </div>
                 )}
@@ -1269,11 +1420,15 @@ export default function DuckRaceApp() {
                   className={`winner-banner ${
                     gameState.winnerAnswer === currentQuestion.answer
                       ? "correct-banner"
+                      : gameState.winnerAnswer === -1
+                      ? "timeout-banner"
                       : "wrong-banner"
                   }`}
                 >
                   {gameState.winnerAnswer === currentQuestion.answer
                     ? `✅ ${winner?.name} trả lời ĐÚNG! +${POINTS_CORRECT} điểm`
+                    : gameState.winnerAnswer === -1
+                    ? `⏰ ${winner?.name} HẾT GIờ! ${POINTS_TIMEOUT} điểm`
                     : `❌ ${winner?.name} trả lời SAI!`}
                 </div>
                 <div className="question-box">
@@ -1458,6 +1613,80 @@ export default function DuckRaceApp() {
             <div className="icon">{showPowerUpGained.icon}</div>
             <div className="name">{showPowerUpGained.name}</div>
             <div className="desc">{showPowerUpGained.desc}</div>
+          </div>
+        )}
+
+        {/* Rules Modal */}
+        {showRules && (
+          <div className="rules-overlay" onClick={() => setShowRules(false)}>
+            <div className="rules-modal" onClick={(e) => e.stopPropagation()}>
+              <h2>📋 NỘI QUY CHƠI GAME</h2>
+              <div className="rules-content">
+                <div className="rule-section">
+                  <h3>🎮 CÁCH CHƠI</h3>
+                  <ul>
+                    <li>
+                      🏁 <strong>Đua:</strong> Spam CLICK hoặc nhấn SPACE liên
+                      tục để tiến về đích
+                    </li>
+                    <li>
+                      🏆 <strong>Về đích:</strong> Ai về trước được quyền trả
+                      lời câu hỏi
+                    </li>
+                    <li>
+                      ⏱️ <strong>Thời gian:</strong> Có 7 giây để trả lời mỗi
+                      câu hỏi
+                    </li>
+                  </ul>
+                </div>
+                <div className="rule-section">
+                  <h3>📊 TÍNH ĐIỂM</h3>
+                  <ul>
+                    <li>
+                      ✅ <strong>Trả lời đúng:</strong> +10 điểm
+                    </li>
+                    <li>
+                      ❌ <strong>Trả lời sai:</strong> 0 điểm
+                    </li>
+                    <li>
+                      ⏰ <strong>Hết giờ:</strong> -5 điểm
+                    </li>
+                  </ul>
+                </div>
+                <div className="rule-section">
+                  <h3>⚡ VẬT PHẨM</h3>
+                  <ul>
+                    <li>
+                      🔥 <strong>Streak:</strong> Đúng 3 câu liên tiếp = nhận 1
+                      vật phẩm
+                    </li>
+                    <li>
+                      ❄️ <strong>Đóng Băng:</strong> Làm đối thủ đứng yên 3 giây
+                    </li>
+                    <li>
+                      ⚡ <strong>Tăng Tốc:</strong> Tốc độ x2 trong 5 giây
+                    </li>
+                    <li>
+                      🎁 <strong>Bonus:</strong> +10 điểm ngay lập tức
+                    </li>
+                  </ul>
+                </div>
+                <div className="rule-section warning">
+                  <h3>🚫 LƯU Ý</h3>
+                  <ul>
+                    <li>Không được sử dụng macro/auto-clicker</li>
+                    <li>Hệ thống sẽ phát hiện và phạt nếu spam quá nhanh</li>
+                    <li>Chơi fair play để vui vẻ nhé! 😊</li>
+                  </ul>
+                </div>
+              </div>
+              <button
+                className="btn btn-close-rules"
+                onClick={() => setShowRules(false)}
+              >
+                ✓ ĐÃ HIỂU
+              </button>
+            </div>
           </div>
         )}
       </main>
