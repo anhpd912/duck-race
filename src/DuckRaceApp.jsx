@@ -159,15 +159,54 @@ const SNIPER_PENALTY = 30; // Bị bắn lùi bao nhiêu %
 const STEAL_TIME_THRESHOLD = 4; // Sau 4 giây có thể cướp đáp án
 const STEAL_WRONG_PENALTY = -15; // Cướp mà sai thì -15 điểm
 
-// Vòng quay may rủi
-const ROULETTE_OPTIONS = [
-  { id: "double", name: "x2 ĐIỂM!", icon: "🎁", effect: "double" },
-  { id: "lose", name: "MẤT ĐIỂM!", icon: "💀", effect: "lose" },
-  { id: "swap", name: "ĐỔI ĐIỂM!", icon: "🔄", effect: "swap" },
-  { id: "nothing", name: "AN TOÀN~", icon: "😇", effect: "nothing" },
-  { id: "bonus", name: "+5 BONUS!", icon: "⭐", effect: "bonus" },
-  { id: "steal", name: "CƯỚP 10đ!", icon: "🏴‍☠️", effect: "steal" },
+// Random Events - Sự kiện ngẫu nhiên xảy ra khi đua
+const RANDOM_EVENTS = [
+  {
+    id: "earthquake",
+    name: "🌋 ĐỘNG ĐẤT!",
+    effect: "knockback_all",
+    desc: "Tất cả lùi 15%!",
+  },
+  {
+    id: "wind",
+    name: "💨 GIÓ LỚN!",
+    effect: "boost_all",
+    desc: "Tất cả tiến 10%!",
+  },
+  {
+    id: "banana",
+    name: "🍌 CHUỐI!",
+    effect: "random_slip",
+    desc: "1 người random lùi 20%!",
+  },
+  {
+    id: "reverse",
+    name: "🔀 ĐẢO NGƯỢC!",
+    effect: "reverse_positions",
+    desc: "Đảo vị trí #1 và #cuối!",
+  },
+  {
+    id: "shuffle",
+    name: "🎲 XÁOẢI!",
+    effect: "shuffle_positions",
+    desc: "Random vị trí tất cả!",
+  },
+  {
+    id: "gift",
+    name: "🎁 QUÀ!",
+    effect: "random_bonus",
+    desc: "1 người random +10 điểm!",
+  },
 ];
+
+// Speed Traps - Vùng bẫy trên đường đua
+const SPEED_TRAP_ZONES = [
+  { start: 25, end: 35, name: "🕳️ HỐ XỊN" },
+  { start: 55, end: 65, name: "🧊 BĂNG TRƠN" },
+  { start: 75, end: 85, name: "🌊 SÓNG TO" },
+];
+const SPEED_TRAP_PENALTY = 0.5; // Chậm 50% khi trong trap
+const RANDOM_EVENT_CHANCE = 0.03; // 3% mỗi lần click
 
 const AVATARS = [
   "🦆",
@@ -245,11 +284,9 @@ export default function DuckRaceApp() {
   // === NEW FEATURES ===
   const [sniperTarget, setSniperTarget] = useState(null); // Người đang ở 80%+ có thể bị bắn
   const [canStealAnswer, setCanStealAnswer] = useState(false); // Có thể cướp đáp án không
-  const [showRoulette, setShowRoulette] = useState(false); // Hiện vòng quay
-  const [rouletteResult, setRouletteResult] = useState(null); // Kết quả vòng quay
-  const [isSpinning, setIsSpinning] = useState(false); // Đang quay
-  const [lastAnswerPoints, setLastAnswerPoints] = useState(0); // Điểm vừa được từ câu trả lời
   const [sniperCooldown, setSniperCooldown] = useState(false); // Đã bắn chưa trong round này
+  const [activeRandomEvent, setActiveRandomEvent] = useState(null); // Sự kiện random đang hiện
+  const [isInSpeedTrap, setIsInSpeedTrap] = useState(null); // Đang trong vùng bẫy nào
 
   const lastPressTime = useRef(0);
   const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
@@ -375,6 +412,98 @@ export default function DuckRaceApp() {
     };
   }, [user, playerId]);
 
+  // === RANDOM EVENT - Sự kiện ngẫu nhiên khi đua ===
+  const triggerRandomEvent = useCallback(async () => {
+    if (players.length < 2) return;
+
+    const event =
+      RANDOM_EVENTS[Math.floor(Math.random() * RANDOM_EVENTS.length)];
+    setActiveRandomEvent(event);
+
+    const playersRef = collection(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players"
+    );
+    const snap = await getDocs(playersRef);
+    const playerDocs = [];
+    snap.forEach((d) => playerDocs.push({ ref: d.ref, data: d.data() }));
+
+    switch (event.effect) {
+      case "knockback_all":
+        // Tất cả lùi 15%
+        for (const p of playerDocs) {
+          await updateDoc(p.ref, {
+            position: Math.max(0, (p.data.position || 0) - 15),
+          });
+        }
+        break;
+      case "boost_all":
+        // Tất cả tiến 10%
+        for (const p of playerDocs) {
+          await updateDoc(p.ref, {
+            position: Math.min(FINISH_LINE - 5, (p.data.position || 0) + 10),
+          });
+        }
+        break;
+      case "random_slip": {
+        // 1 người random lùi 20%
+        if (playerDocs.length > 0) {
+          const victim =
+            playerDocs[Math.floor(Math.random() * playerDocs.length)];
+          await updateDoc(victim.ref, {
+            position: Math.max(0, (victim.data.position || 0) - 20),
+          });
+        }
+        break;
+      }
+      case "reverse_positions": {
+        // Đảo vị trí #1 và #cuối
+        if (playerDocs.length >= 2) {
+          const sorted = [...playerDocs].sort(
+            (a, b) => (b.data.position || 0) - (a.data.position || 0)
+          );
+          const firstPos = sorted[0].data.position || 0;
+          const lastPos = sorted[sorted.length - 1].data.position || 0;
+          await updateDoc(sorted[0].ref, { position: lastPos });
+          await updateDoc(sorted[sorted.length - 1].ref, {
+            position: firstPos,
+          });
+        }
+        break;
+      }
+      case "shuffle_positions": {
+        // Xáo random vị trí tất cả
+        const positions = playerDocs.map((p) => p.data.position || 0);
+        for (let i = positions.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [positions[i], positions[j]] = [positions[j], positions[i]];
+        }
+        for (let i = 0; i < playerDocs.length; i++) {
+          await updateDoc(playerDocs[i].ref, { position: positions[i] });
+        }
+        break;
+      }
+      case "random_bonus": {
+        // 1 người random +10 điểm
+        if (playerDocs.length > 0) {
+          const lucky =
+            playerDocs[Math.floor(Math.random() * playerDocs.length)];
+          await updateDoc(lucky.ref, { score: (lucky.data.score || 0) + 10 });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    // Ẩn thông báo sau 2.5 giây
+    setTimeout(() => setActiveRandomEvent(null), 2500);
+  }, [players.length]);
+
   // --- KEYBOARD LISTENER FOR RACING ---
   const handleRaceInput = useCallback(async () => {
     if (!playerId || gameState.status !== "racing") return;
@@ -423,7 +552,18 @@ export default function DuckRaceApp() {
 
     // Tính step (x2 nếu đang boost)
     const isBoosted = myPlayer.boosted && myPlayer.boostedUntil > now;
-    const step = isBoosted ? STEP_PER_CLICK * 2 : STEP_PER_CLICK;
+    let step = isBoosted ? STEP_PER_CLICK * 2 : STEP_PER_CLICK;
+
+    // === SPEED TRAP: Kiểm tra có đang trong vùng bẫy không ===
+    const currentTrap = SPEED_TRAP_ZONES.find(
+      (trap) => myPlayer.position >= trap.start && myPlayer.position <= trap.end
+    );
+    if (currentTrap) {
+      step = step * SPEED_TRAP_PENALTY; // Chậm 50%
+      setIsInSpeedTrap(currentTrap);
+    } else {
+      setIsInSpeedTrap(null);
+    }
 
     const newPosition = Math.min(myPlayer.position + step, FINISH_LINE);
 
@@ -438,6 +578,11 @@ export default function DuckRaceApp() {
       playerId
     );
     await updateDoc(playerRef, { position: newPosition });
+
+    // === RANDOM EVENT: 3% chance mỗi click ===
+    if (Math.random() < RANDOM_EVENT_CHANCE && !activeRandomEvent) {
+      triggerRandomEvent();
+    }
 
     // === SNIPER: Kiểm tra nếu vượt 80% thì có thể bị bắn ===
     if (
@@ -464,7 +609,14 @@ export default function DuckRaceApp() {
         winnerId: playerId,
       });
     }
-  }, [playerId, gameState.status, gameState.winnerId, players]);
+  }, [
+    playerId,
+    gameState.status,
+    gameState.winnerId,
+    players,
+    activeRandomEvent,
+    triggerRandomEvent,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -618,99 +770,6 @@ export default function DuckRaceApp() {
     setCanStealAnswer(false);
   };
 
-  // === VÒNG QUAY MAY RỦI ===
-  const spinRoulette = async (pointsEarned) => {
-    setShowRoulette(true);
-    setIsSpinning(true);
-    setLastAnswerPoints(pointsEarned);
-
-    // Random kết quả sau 2 giây
-    setTimeout(async () => {
-      const result =
-        ROULETTE_OPTIONS[Math.floor(Math.random() * ROULETTE_OPTIONS.length)];
-      setRouletteResult(result);
-      setIsSpinning(false);
-
-      // Áp dụng effect
-      const myPlayer = players.find((p) => p.id === playerId);
-      const playerRef = doc(
-        db,
-        "artifacts",
-        appId,
-        "public",
-        "data",
-        "players",
-        playerId
-      );
-
-      let finalScore = myPlayer?.score || 0;
-
-      switch (result.effect) {
-        case "double":
-          finalScore += pointsEarned; // Đã được +10, giờ +10 nữa = x2
-          break;
-        case "lose":
-          finalScore -= pointsEarned; // Mất điểm vừa được
-          break;
-        case "swap": {
-          // Đổi điểm với người random khác
-          const others = players.filter((p) => p.id !== playerId);
-          if (others.length > 0) {
-            const randomOther =
-              others[Math.floor(Math.random() * others.length)];
-            const otherRef = doc(
-              db,
-              "artifacts",
-              appId,
-              "public",
-              "data",
-              "players",
-              randomOther.id
-            );
-            await updateDoc(otherRef, { score: finalScore });
-            finalScore = randomOther.score;
-          }
-          break;
-        }
-        case "bonus":
-          finalScore += 5;
-          break;
-        case "steal": {
-          // Cướp 10 điểm từ người dẫn đầu
-          const leader = players
-            .filter((p) => p.id !== playerId)
-            .sort((a, b) => b.score - a.score)[0];
-          if (leader && leader.score >= 10) {
-            const leaderRef = doc(
-              db,
-              "artifacts",
-              appId,
-              "public",
-              "data",
-              "players",
-              leader.id
-            );
-            await updateDoc(leaderRef, { score: leader.score - 10 });
-            finalScore += 10;
-          }
-          break;
-        }
-        case "nothing":
-        default:
-          // Không có gì
-          break;
-      }
-
-      await updateDoc(playerRef, { score: Math.max(0, finalScore) });
-
-      // Ẩn roulette sau 2 giây
-      setTimeout(() => {
-        setShowRoulette(false);
-        setRouletteResult(null);
-      }, 2500);
-    }, 2000);
-  };
-
   // --- ACTIONS ---
   const joinGame = async () => {
     if (!playerId || !playerName.trim()) return;
@@ -804,9 +863,7 @@ export default function DuckRaceApp() {
         score: (myPlayer?.score || 0) + pointsEarned,
         streak: newStreak,
       });
-
-      // === VÒNG QUAY MAY RỦI sau khi trả lời đúng ===
-      spinRoulette(pointsEarned);
+      // Điểm đã được cộng trực tiếp, không cần vòng quay nữa
     } else {
       // Trả lời sai -> reset streak
       // Nếu cướp mà sai thì -15 điểm
@@ -1205,6 +1262,18 @@ export default function DuckRaceApp() {
                   <div className="finish-line">
                     <span>ĐÍCH</span>
                   </div>
+                  {/* Speed Trap Zones */}
+                  {SPEED_TRAP_ZONES.map((trap, idx) => (
+                    <div
+                      key={idx}
+                      className="speed-trap-zone"
+                      style={{
+                        left: `${trap.start}%`,
+                        width: `${trap.end - trap.start}%`,
+                      }}
+                      data-name={trap.name}
+                    />
+                  ))}
                   {sortedByPosition.map((p) => (
                     <div key={p.id} className="player-lane">
                       <div className="lane-info">
@@ -1357,7 +1426,7 @@ export default function DuckRaceApp() {
                       ⏱️ <strong>Thời gian:</strong> Có 7 giây để trả lời
                     </li>
                     <li>
-                      ✅ <strong>Đúng:</strong> +10 điểm + QUAY ROULETTE 🎰
+                      ✅ <strong>Đúng:</strong> +10 điểm
                     </li>
                     <li>
                       🎯 <strong>Sniper:</strong> Ai đạt 80%+ có thể bị BẮN lùi!
@@ -1365,6 +1434,12 @@ export default function DuckRaceApp() {
                     <li>
                       🏴‍☠️ <strong>Cướp:</strong> Sau 4s có thể cướp quyền trả
                       lời!
+                    </li>
+                    <li>
+                      ⚠️ <strong>Speed Trap:</strong> Vùng đỏ = chậm 50%!
+                    </li>
+                    <li>
+                      🌋 <strong>Random Event:</strong> Sự kiện bất ngờ khi đua!
                     </li>
                     <li>
                       🚫 <strong>Gian lận:</strong> Dùng macro sẽ bị phạt!
@@ -1412,6 +1487,18 @@ export default function DuckRaceApp() {
                   <div className="finish-line">
                     <span>ĐÍCH</span>
                   </div>
+                  {/* Speed Trap Zones */}
+                  {SPEED_TRAP_ZONES.map((trap, idx) => (
+                    <div
+                      key={idx}
+                      className="speed-trap-zone"
+                      style={{
+                        left: `${trap.start}%`,
+                        width: `${trap.end - trap.start}%`,
+                      }}
+                      data-name={trap.name}
+                    />
+                  ))}
                   {sortedByPosition.map((p) => (
                     <div
                       key={p.id}
@@ -1442,6 +1529,13 @@ export default function DuckRaceApp() {
                     </div>
                   ))}
                 </div>
+
+                {/* Speed Trap Indicator */}
+                {isInSpeedTrap && (
+                  <div className="speed-trap-indicator">
+                    ⚠️ {isInSpeedTrap.name} - TỐC ĐỘ GIẢM 50%!
+                  </div>
+                )}
                 <div className="tap-zone">
                   <button
                     className="tap-button"
@@ -1900,7 +1994,7 @@ export default function DuckRaceApp() {
                   <h3>📊 TÍNH ĐIỂM</h3>
                   <ul>
                     <li>
-                      ✅ <strong>Trả lời đúng:</strong> +10 điểm + QUAY ROULETTE
+                      ✅ <strong>Trả lời đúng:</strong> +10 điểm
                     </li>
                     <li>
                       ❌ <strong>Trả lời sai:</strong> 0 điểm
@@ -1910,20 +2004,40 @@ export default function DuckRaceApp() {
                     </li>
                   </ul>
                 </div>
-                <div className="rule-section">
-                  <h3>🎰 VÒNG QUAY MAY RỦI</h3>
+                <div className="rule-section warning">
+                  <h3>⚠️ CHƯỚNG NGẠI VẬT</h3>
                   <ul>
                     <li>
-                      🎁 <strong>x2 Điểm:</strong> Nhân đôi điểm vừa được
+                      🕳️ <strong>Hố Xoáy (25-35%):</strong> Tốc độ giảm 50%
                     </li>
                     <li>
-                      💀 <strong>Mất điểm:</strong> Mất điểm vừa được
+                      🧊 <strong>Băng Trơn (55-65%):</strong> Tốc độ giảm 50%
                     </li>
                     <li>
-                      🔄 <strong>Đổi điểm:</strong> Swap với người khác
+                      🌊 <strong>Sóng To (75-85%):</strong> Tốc độ giảm 50%
+                    </li>
+                  </ul>
+                </div>
+                <div className="rule-section warning">
+                  <h3>🌋 RANDOM EVENT (3% mỗi click)</h3>
+                  <ul>
+                    <li>
+                      🌋 <strong>Động Đất:</strong> Tất cả lùi 15%!
                     </li>
                     <li>
-                      🏴‍☠️ <strong>Cướp:</strong> Lấy 10đ từ người dẫn đầu
+                      💨 <strong>Gió Lớn:</strong> Tất cả tiến 10%!
+                    </li>
+                    <li>
+                      🍌 <strong>Chuối:</strong> 1 người random lùi 20%!
+                    </li>
+                    <li>
+                      🔀 <strong>Đảo Ngược:</strong> Đổi vị trí #1 và #cuối!
+                    </li>
+                    <li>
+                      🎲 <strong>Xáo Trộn:</strong> Random vị trí tất cả!
+                    </li>
+                    <li>
+                      🎁 <strong>Quà:</strong> 1 người random +10 điểm!
                     </li>
                   </ul>
                 </div>
@@ -1977,43 +2091,12 @@ export default function DuckRaceApp() {
           </div>
         )}
 
-        {/* === VÒNG QUAY MAY RỦI === */}
-        {showRoulette && (
-          <div className="roulette-overlay">
-            <div className="roulette-box">
-              <h2>🎰 VÒNG QUAY MAY RỦI!</h2>
-              {isSpinning ? (
-                <div className="roulette-spinning">
-                  <div className="roulette-wheel">
-                    {ROULETTE_OPTIONS.map((opt, idx) => (
-                      <div key={idx} className="roulette-item spinning">
-                        {opt.icon}
-                      </div>
-                    ))}
-                  </div>
-                  <p>Đang quay...</p>
-                </div>
-              ) : rouletteResult ? (
-                <div
-                  className={`roulette-result result-${rouletteResult.effect}`}
-                >
-                  <div className="result-icon">{rouletteResult.icon}</div>
-                  <div className="result-name">{rouletteResult.name}</div>
-                  <p className="result-desc">
-                    {rouletteResult.effect === "double" &&
-                      `Điểm x2! +${lastAnswerPoints} thêm!`}
-                    {rouletteResult.effect === "lose" &&
-                      `Mất ${lastAnswerPoints} điểm vừa được!`}
-                    {rouletteResult.effect === "swap" &&
-                      "Đã đổi điểm với người khác!"}
-                    {rouletteResult.effect === "bonus" && "+5 điểm bonus!"}
-                    {rouletteResult.effect === "steal" &&
-                      "Cướp 10 điểm từ người dẫn đầu!"}
-                    {rouletteResult.effect === "nothing" &&
-                      "May mắn! Không mất gì~"}
-                  </p>
-                </div>
-              ) : null}
+        {/* === RANDOM EVENT NOTIFICATION === */}
+        {activeRandomEvent && (
+          <div className="random-event-overlay">
+            <div className="random-event-box">
+              <h2>{activeRandomEvent.name}</h2>
+              <p className="event-desc">{activeRandomEvent.desc}</p>
             </div>
           </div>
         )}
