@@ -255,6 +255,18 @@ body {
   background-color: rgba(239, 68, 68, 0.2);
 }
 
+.btn-danger {
+  border: 1px solid #dc2626;
+  color: white;
+  background: #dc2626;
+  padding: 8px 16px;
+  font-size: 0.75rem;
+}
+
+.btn-danger:hover {
+  background-color: #b91c1c;
+}
+
 .btn-play-again {
   background: linear-gradient(135deg, #16a34a, #15803d);
   color: white;

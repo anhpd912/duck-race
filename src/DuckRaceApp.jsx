@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Award,
   Medal,
+  Trash2,
 } from "lucide-react";
 
 // --- CÂU HỎI VỀ TƯ TƯỞNG HỒ CHÍ MINH ---
@@ -291,6 +292,10 @@ export default function DuckRaceApp() {
       if (me) {
         setHasJoined(true);
         setPlayerName(me.name);
+      } else {
+        // Player bị xóa khỏi game (admin xóa hết) -> reset về màn hình nhập tên
+        setHasJoined(false);
+        setPlayerName("");
       }
     });
 
@@ -522,6 +527,42 @@ export default function DuckRaceApp() {
     });
   };
 
+  const removeAllPlayers = async () => {
+    if (!window.confirm("Xóa hết người chơi?")) return;
+
+    const playersRef = collection(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players"
+    );
+    const snap = await getDocs(playersRef);
+    const deletePromises = [];
+    snap.forEach((d) => {
+      deletePromises.push(deleteDoc(d.ref));
+    });
+    await Promise.all(deletePromises);
+
+    // Reset game state
+    const gameStateRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "game_config",
+      "gameState"
+    );
+    await updateDoc(gameStateRef, {
+      status: "waiting",
+      currentQuestionIndex: 0,
+      winnerId: null,
+      winnerAnswer: null,
+    });
+  };
+
   // --- RENDER HELPERS ---
   const myPlayer = players.find((p) => p.id === playerId);
   const currentQuestion = QUESTIONS[gameState.currentQuestionIndex];
@@ -608,6 +649,9 @@ export default function DuckRaceApp() {
                 )}
                 <button onClick={resetGame} className="btn btn-reset">
                   <RefreshCw className="icon-xs" /> RESET
+                </button>
+                <button onClick={removeAllPlayers} className="btn btn-danger">
+                  <Trash2 className="icon-xs" /> XÓA HẾT
                 </button>
                 <div className="player-count">{players.length} người chơi</div>
               </div>
