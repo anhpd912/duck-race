@@ -221,9 +221,13 @@ export default function DuckRaceApp() {
   const [myPowerUps, setMyPowerUps] = useState([]); // Power-ups của player
   const [activePowerUp, setActivePowerUp] = useState(null); // Power-up đang active
   const [showPowerUpGained, setShowPowerUpGained] = useState(null); // Hiện thông báo nhận power-up
+  const [showPowerUpSelection, setShowPowerUpSelection] = useState(false); // Hiện UI chọn power-up
+  const [showFreezeSelection, setShowFreezeSelection] = useState(false); // Hiện UI chọn người freeze
 
   const lastPressTime = useRef(0);
   const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
+  const clickTimestamps = useRef([]); // Track click timestamps for macro detection
+  const [macroWarning, setMacroWarning] = useState(false); // Hiện cảnh báo macro
   const isAdmin =
     new URLSearchParams(window.location.search).get("admin") === "true";
 
@@ -358,6 +362,27 @@ export default function DuckRaceApp() {
       isKeyReleased.current = true;
       return;
     }
+
+    // === MACRO DETECTION ===
+    // Track click timestamps (keep last 10)
+    clickTimestamps.current.push(now);
+    if (clickTimestamps.current.length > 10) {
+      clickTimestamps.current.shift();
+    }
+
+    // Check if 10 clicks happened in less than 800ms (too fast = macro)
+    if (clickTimestamps.current.length >= 10) {
+      const timeDiff = now - clickTimestamps.current[0];
+      if (timeDiff < 800) {
+        // DETECTED MACRO!
+        setMacroWarning(true);
+        setTimeout(() => setMacroWarning(false), 3000);
+        clickTimestamps.current = []; // Reset
+        isKeyReleased.current = true;
+        return; // Block this click
+      }
+    }
+
     lastPressTime.current = now;
 
     const myPlayer = players.find((p) => p.id === playerId);
@@ -503,25 +528,18 @@ export default function DuckRaceApp() {
 
     if (isCorrect) {
       const newStreak = currentStreak + 1;
-      let newPowerUps = [...(myPlayer?.powerUps || [])];
 
-      // Nhận power-up khi đạt 3 câu liên tiếp
+      // Nhận power-up khi đạt 3 câu liên tiếp - cho player CHỌN
       if (
         newStreak >= STREAK_FOR_POWERUP &&
         newStreak % STREAK_FOR_POWERUP === 0
       ) {
-        const powerUpTypes = Object.keys(POWER_UPS);
-        const randomPowerUp =
-          powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
-        newPowerUps.push(randomPowerUp);
-        setShowPowerUpGained(POWER_UPS[randomPowerUp]);
-        setTimeout(() => setShowPowerUpGained(null), 3000);
+        setShowPowerUpSelection(true); // Hiện UI chọn power-up
       }
 
       await updateDoc(playerRef, {
         score: (myPlayer?.score || 0) + POINTS_CORRECT,
         streak: newStreak,
-        powerUps: newPowerUps,
       });
     } else {
       // Trả lời sai -> reset streak
@@ -661,8 +679,37 @@ export default function DuckRaceApp() {
   };
 
   // --- POWER-UP FUNCTIONS ---
+
+  // Hàm chọn power-up khi đạt streak
+  const selectPowerUp = async (powerUpType) => {
+    if (!playerId) return;
+
+    const playerRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players",
+      playerId
+    );
+    const myPlayer = players.find((p) => p.id === playerId);
+    const newPowerUps = [...(myPlayer?.powerUps || []), powerUpType];
+
+    await updateDoc(playerRef, { powerUps: newPowerUps });
+    setShowPowerUpSelection(false);
+    setShowPowerUpGained(POWER_UPS[powerUpType]);
+    setTimeout(() => setShowPowerUpGained(null), 2000);
+  };
+
   const activatePowerUp = async (powerUpType, targetPlayerId = null) => {
-    if (!playerId || gameState.status !== "racing") return;
+    if (!playerId) return;
+
+    // Nếu là FREEZE và chưa chọn người -> hiện UI chọn
+    if (powerUpType === "FREEZE" && !targetPlayerId) {
+      setShowFreezeSelection(true);
+      return;
+    }
 
     const myPlayer = players.find((p) => p.id === playerId);
     if (!myPlayer || !myPlayer.powerUps?.includes(powerUpType)) return;
@@ -687,6 +734,7 @@ export default function DuckRaceApp() {
 
     if (powerUpType === "FREEZE" && targetPlayerId) {
       // Đóng băng người khác 3 giây
+      setShowFreezeSelection(false);
       const targetRef = doc(
         db,
         "artifacts",
@@ -696,11 +744,12 @@ export default function DuckRaceApp() {
         "players",
         targetPlayerId
       );
+      const targetPlayer = players.find((p) => p.id === targetPlayerId);
       await updateDoc(targetRef, {
         frozen: true,
         frozenUntil: now + 3000,
       });
-      setActivePowerUp({ type: "FREEZE", target: targetPlayerId });
+      setActivePowerUp({ type: "FREEZE", targetName: targetPlayer?.name });
       setTimeout(() => {
         updateDoc(targetRef, { frozen: false, frozenUntil: 0 });
         setActivePowerUp(null);
@@ -717,9 +766,10 @@ export default function DuckRaceApp() {
         setActivePowerUp(null);
       }, 5000);
     } else if (powerUpType === "BONUS") {
-      // +10 điểm ngay lập tức
+      // +10 điểm ngay lập tức - FIX: cộng vào score hiện tại
+      const currentScore = myPlayer.score || 0;
       await updateDoc(myPlayerRef, {
-        score: (myPlayer.score || 0) + 10,
+        score: currentScore + 10,
       });
       setActivePowerUp({ type: "BONUS" });
       setTimeout(() => setActivePowerUp(null), 1500);
@@ -1075,7 +1125,7 @@ export default function DuckRaceApp() {
                 </div>
 
                 {/* Power-ups UI */}
-                {myPowerUps.length > 0 && (
+                {myPowerUps.length > 0 && !showFreezeSelection && (
                   <div className="powerups-container">
                     <div className="powerups-label">⚡ VẬT PHẨM:</div>
                     <div className="powerups-list">
@@ -1085,21 +1135,7 @@ export default function DuckRaceApp() {
                             className={`powerup-btn powerup-${pu.toLowerCase()}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (pu === "FREEZE") {
-                                // Hiện danh sách để chọn người freeze
-                                const others = players.filter(
-                                  (p) => p.id !== playerId
-                                );
-                                if (others.length > 0) {
-                                  const target =
-                                    others[
-                                      Math.floor(Math.random() * others.length)
-                                    ];
-                                  activatePowerUp(pu, target.id);
-                                }
-                              } else {
-                                activatePowerUp(pu);
-                              }
+                              activatePowerUp(pu); // Sẽ tự hiện UI chọn người nếu là FREEZE
                             }}
                             title={POWER_UPS[pu]?.desc}
                           >
@@ -1111,13 +1147,54 @@ export default function DuckRaceApp() {
                   </div>
                 )}
 
+                {/* UI chọn người để FREEZE */}
+                {showFreezeSelection && (
+                  <div
+                    className="freeze-selection-overlay"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="freeze-selection-box">
+                      <h3>❄️ CHỌN NGƯỜI ĐỂ ĐÓNG BĂNG:</h3>
+                      <div className="freeze-targets">
+                        {players
+                          .filter((p) => p.id !== playerId)
+                          .map((p) => (
+                            <button
+                              key={p.id}
+                              className="freeze-target-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                activatePowerUp("FREEZE", p.id);
+                              }}
+                            >
+                              {p.avatar} {p.name}
+                              <span className="position-hint">
+                                ({Math.round(p.position)}%)
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                      <button
+                        className="cancel-freeze-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowFreezeSelection(false);
+                        }}
+                      >
+                        ✕ HỦY
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Active power-up indicator */}
                 {activePowerUp && (
                   <div
                     className={`active-powerup active-${activePowerUp.type.toLowerCase()}`}
                   >
                     {activePowerUp.type === "BOOST" && "⚡ TĂNG TỐC x2!"}
-                    {activePowerUp.type === "FREEZE" && "❄️ ĐÓNG BĂNG!"}
+                    {activePowerUp.type === "FREEZE" &&
+                      `❄️ ĐÓNG BĂNG ${activePowerUp.targetName}!`}
                     {activePowerUp.type === "BONUS" && "🎁 +10 ĐIỂM!"}
                   </div>
                 )}
@@ -1126,6 +1203,18 @@ export default function DuckRaceApp() {
                 {myPlayer?.frozen && (
                   <div className="frozen-overlay">
                     <span>❄️ BẠN BỊ ĐÓNG BĂNG! ❄️</span>
+                  </div>
+                )}
+
+                {/* Macro Warning */}
+                {macroWarning && (
+                  <div className="macro-warning-overlay">
+                    <div className="macro-warning-box">
+                      <span className="warning-icon">🚨</span>
+                      <h2>Á À! BẮT QUẢ TANG GIAN LẬN NHÉ!</h2>
+                      <p>Spam quá nhanh rồi đó bạn ơi! 😤</p>
+                      <p className="sub-text">Chơi fair play thôi nha~</p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1334,6 +1423,41 @@ export default function DuckRaceApp() {
                 <RefreshCw className="icon-sm" /> CHƠI LẠI
               </button>
             )}
+          </div>
+        )}
+
+        {/* UI chọn Power-up khi đạt streak */}
+        {showPowerUpSelection && (
+          <div className="powerup-selection-overlay">
+            <div className="powerup-selection-box">
+              <h2>🎉 XUẤT SẮC! CHỌN VẬT PHẨM:</h2>
+              <p className="streak-info">
+                Bạn đã trả lời đúng {STREAK_FOR_POWERUP} câu liên tiếp!
+              </p>
+              <div className="powerup-choices">
+                {Object.entries(POWER_UPS).map(([key, pu]) => (
+                  <button
+                    key={key}
+                    className={`powerup-choice powerup-${key.toLowerCase()}`}
+                    onClick={() => selectPowerUp(key)}
+                  >
+                    <span className="pu-icon">{pu.icon}</span>
+                    <span className="pu-name">{pu.name}</span>
+                    <span className="pu-desc">{pu.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Thông báo nhận power-up */}
+        {showPowerUpGained && (
+          <div className="powerup-gained">
+            <h3>🎁 NHẬN ĐƯỢC VẬT PHẨM!</h3>
+            <div className="icon">{showPowerUpGained.icon}</div>
+            <div className="name">{showPowerUpGained.name}</div>
+            <div className="desc">{showPowerUpGained.desc}</div>
           </div>
         )}
       </main>
