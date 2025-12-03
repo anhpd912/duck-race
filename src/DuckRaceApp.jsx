@@ -21,7 +21,33 @@ import {
   Award,
   Medal,
   Trash2,
+  Zap,
+  Snowflake,
+  Gift,
 } from "lucide-react";
+
+// --- POWER-UPS ---
+const POWER_UPS = {
+  FREEZE: {
+    id: "freeze",
+    name: "Đóng Băng",
+    icon: "❄️",
+    desc: "Làm đơ 1 người 3 giây",
+  },
+  BOOST: {
+    id: "boost",
+    name: "Tăng Tốc",
+    icon: "⚡",
+    desc: "Tốc độ x2 trong 5 giây",
+  },
+  BONUS: {
+    id: "bonus",
+    name: "Bonus",
+    icon: "🎁",
+    desc: "+10 điểm ngay lập tức",
+  },
+};
+const STREAK_FOR_POWERUP = 3; // Đúng 3 câu liên tiếp = nhận power-up
 
 // --- CÂU HỎI VỀ TƯ TƯỞNG HỒ CHÍ MINH ---
 const QUESTIONS = [
@@ -191,7 +217,13 @@ export default function DuckRaceApp() {
     winnerAnswer: null, // Đáp án người thắng chọn
   });
 
+  // Power-up states
+  const [myPowerUps, setMyPowerUps] = useState([]); // Power-ups của player
+  const [activePowerUp, setActivePowerUp] = useState(null); // Power-up đang active
+  const [showPowerUpGained, setShowPowerUpGained] = useState(null); // Hiện thông báo nhận power-up
+
   const lastPressTime = useRef(0);
+  const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
   const isAdmin =
     new URLSearchParams(window.location.search).get("admin") === "true";
 
@@ -283,6 +315,12 @@ export default function DuckRaceApp() {
           score: data.score || 0,
           position: data.position || 0,
           joinedAt: data.joinedAt || Date.now(),
+          streak: data.streak || 0, // Chuỗi trả lời đúng liên tiếp
+          powerUps: data.powerUps || [], // Vật phẩm đang có
+          frozen: data.frozen || false, // Đang bị đóng băng
+          frozenUntil: data.frozenUntil || 0,
+          boosted: data.boosted || false, // Đang được tăng tốc
+          boostedUntil: data.boostedUntil || 0,
         });
       });
       pList.sort((a, b) => b.score - a.score);
@@ -292,6 +330,7 @@ export default function DuckRaceApp() {
       if (me) {
         setHasJoined(true);
         setPlayerName(me.name);
+        setMyPowerUps(me.powerUps || []);
       } else {
         // Player bị xóa khỏi game (admin xóa hết) -> reset về màn hình nhập tên
         setHasJoined(false);
@@ -309,18 +348,32 @@ export default function DuckRaceApp() {
   const handleRaceInput = useCallback(async () => {
     if (!playerId || gameState.status !== "racing") return;
 
-    // Cooldown 50ms để chống lag
+    // Phải thả phím/nút ra mới được bấm tiếp (chống giữ nút)
+    if (!isKeyReleased.current) return;
+    isKeyReleased.current = false;
+
+    // Cooldown 100ms để chống lag
     const now = Date.now();
-    if (now - lastPressTime.current < 50) return;
+    if (now - lastPressTime.current < 100) {
+      isKeyReleased.current = true;
+      return;
+    }
     lastPressTime.current = now;
 
     const myPlayer = players.find((p) => p.id === playerId);
     if (!myPlayer) return;
 
-    const newPosition = Math.min(
-      myPlayer.position + STEP_PER_CLICK,
-      FINISH_LINE
-    );
+    // Kiểm tra bị đóng băng
+    if (myPlayer.frozen && myPlayer.frozenUntil > now) {
+      isKeyReleased.current = true;
+      return; // Không được di chuyển khi bị đóng băng
+    }
+
+    // Tính step (x2 nếu đang boost)
+    const isBoosted = myPlayer.boosted && myPlayer.boostedUntil > now;
+    const step = isBoosted ? STEP_PER_CLICK * 2 : STEP_PER_CLICK;
+
+    const newPosition = Math.min(myPlayer.position + step, FINISH_LINE);
 
     // Cập nhật vị trí
     const playerRef = doc(
@@ -356,12 +409,23 @@ export default function DuckRaceApp() {
     const handleKeyDown = (e) => {
       if (e.code === "Space" || e.key === " ") {
         e.preventDefault();
+        if (e.repeat) return; // Chống giữ phím
         handleRaceInput();
       }
     };
 
+    const handleKeyUp = (e) => {
+      if (e.code === "Space" || e.key === " ") {
+        isKeyReleased.current = true;
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, [handleRaceInput]);
 
   // --- ACTIONS ---
@@ -425,20 +489,44 @@ export default function DuckRaceApp() {
     const currentQ = QUESTIONS[gameState.currentQuestionIndex];
     const isCorrect = optionIndex === currentQ.answer;
 
-    // Cập nhật điểm nếu đúng
+    const playerRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players",
+      playerId
+    );
+    const myPlayer = players.find((p) => p.id === playerId);
+    const currentStreak = myPlayer?.streak || 0;
+
     if (isCorrect) {
-      const playerRef = doc(
-        db,
-        "artifacts",
-        appId,
-        "public",
-        "data",
-        "players",
-        playerId
-      );
-      const myPlayer = players.find((p) => p.id === playerId);
+      const newStreak = currentStreak + 1;
+      let newPowerUps = [...(myPlayer?.powerUps || [])];
+
+      // Nhận power-up khi đạt 3 câu liên tiếp
+      if (
+        newStreak >= STREAK_FOR_POWERUP &&
+        newStreak % STREAK_FOR_POWERUP === 0
+      ) {
+        const powerUpTypes = Object.keys(POWER_UPS);
+        const randomPowerUp =
+          powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+        newPowerUps.push(randomPowerUp);
+        setShowPowerUpGained(POWER_UPS[randomPowerUp]);
+        setTimeout(() => setShowPowerUpGained(null), 3000);
+      }
+
       await updateDoc(playerRef, {
         score: (myPlayer?.score || 0) + POINTS_CORRECT,
+        streak: newStreak,
+        powerUps: newPowerUps,
+      });
+    } else {
+      // Trả lời sai -> reset streak
+      await updateDoc(playerRef, {
+        streak: 0,
       });
     }
 
@@ -523,7 +611,16 @@ export default function DuckRaceApp() {
     );
     const snap = await getDocs(playersRef);
     snap.forEach((d) => {
-      updateDoc(d.ref, { score: 0, position: 0 });
+      updateDoc(d.ref, {
+        score: 0,
+        position: 0,
+        streak: 0,
+        powerUps: [],
+        frozen: false,
+        frozenUntil: 0,
+        boosted: false,
+        boostedUntil: 0,
+      });
     });
   };
 
@@ -563,6 +660,72 @@ export default function DuckRaceApp() {
     });
   };
 
+  // --- POWER-UP FUNCTIONS ---
+  const activatePowerUp = async (powerUpType, targetPlayerId = null) => {
+    if (!playerId || gameState.status !== "racing") return;
+
+    const myPlayer = players.find((p) => p.id === playerId);
+    if (!myPlayer || !myPlayer.powerUps?.includes(powerUpType)) return;
+
+    // Xóa power-up đã dùng
+    const newPowerUps = [...myPlayer.powerUps];
+    const idx = newPowerUps.indexOf(powerUpType);
+    if (idx > -1) newPowerUps.splice(idx, 1);
+
+    const myPlayerRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players",
+      playerId
+    );
+    await updateDoc(myPlayerRef, { powerUps: newPowerUps });
+
+    const now = Date.now();
+
+    if (powerUpType === "FREEZE" && targetPlayerId) {
+      // Đóng băng người khác 3 giây
+      const targetRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "players",
+        targetPlayerId
+      );
+      await updateDoc(targetRef, {
+        frozen: true,
+        frozenUntil: now + 3000,
+      });
+      setActivePowerUp({ type: "FREEZE", target: targetPlayerId });
+      setTimeout(() => {
+        updateDoc(targetRef, { frozen: false, frozenUntil: 0 });
+        setActivePowerUp(null);
+      }, 3000);
+    } else if (powerUpType === "BOOST") {
+      // Tăng tốc x2 trong 5 giây
+      await updateDoc(myPlayerRef, {
+        boosted: true,
+        boostedUntil: now + 5000,
+      });
+      setActivePowerUp({ type: "BOOST" });
+      setTimeout(() => {
+        updateDoc(myPlayerRef, { boosted: false, boostedUntil: 0 });
+        setActivePowerUp(null);
+      }, 5000);
+    } else if (powerUpType === "BONUS") {
+      // +10 điểm ngay lập tức
+      await updateDoc(myPlayerRef, {
+        score: (myPlayer.score || 0) + 10,
+      });
+      setActivePowerUp({ type: "BONUS" });
+      setTimeout(() => setActivePowerUp(null), 1500);
+    }
+  };
+
   // --- RENDER HELPERS ---
   const myPlayer = players.find((p) => p.id === playerId);
   const currentQuestion = QUESTIONS[gameState.currentQuestionIndex];
@@ -585,6 +748,16 @@ export default function DuckRaceApp() {
 
   return (
     <div className="app-container">
+      {/* Power-up gained notification */}
+      {showPowerUpGained && (
+        <div className="powerup-gained">
+          <h3>🎉 NHẬN VẬT PHẨM!</h3>
+          <div className="icon">{showPowerUpGained.icon}</div>
+          <div className="name">{showPowerUpGained.name}</div>
+          <div className="desc">{showPowerUpGained.desc}</div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="header">
         <div className="header-left">
@@ -592,6 +765,10 @@ export default function DuckRaceApp() {
           <h1 className="header-title">TƯ TƯỞNG HỒ CHÍ MINH</h1>
         </div>
         <div className="header-status">{statusText}</div>
+        {/* Streak indicator */}
+        {!isAdmin && myPlayer?.streak > 0 && (
+          <div className="streak-indicator">🔥 Streak: {myPlayer.streak}</div>
+        )}
       </header>
 
       <main className="main-content">
@@ -825,7 +1002,17 @@ export default function DuckRaceApp() {
 
             {/* Player - Racing */}
             {gameState.status === "racing" && (
-              <div className="race-view" onClick={handleRaceInput}>
+              <div
+                className="race-view"
+                onMouseDown={handleRaceInput}
+                onMouseUp={() => {
+                  isKeyReleased.current = true;
+                }}
+                onTouchStart={handleRaceInput}
+                onTouchEnd={() => {
+                  isKeyReleased.current = true;
+                }}
+              >
                 <div className="race-instruction">
                   <span className="race-hint">
                     🔥 SPAM CLICK HOẶC SPACE ĐỂ ĐUA! 🔥
@@ -866,10 +1053,81 @@ export default function DuckRaceApp() {
                   ))}
                 </div>
                 <div className="tap-zone">
-                  <button className="tap-button" onClick={handleRaceInput}>
+                  <button
+                    className="tap-button"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      handleRaceInput();
+                    }}
+                    onMouseUp={() => {
+                      isKeyReleased.current = true;
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      handleRaceInput();
+                    }}
+                    onTouchEnd={() => {
+                      isKeyReleased.current = true;
+                    }}
+                  >
                     👆 NHẤN ĐÂY ĐỂ ĐUA! 👆
                   </button>
                 </div>
+
+                {/* Power-ups UI */}
+                {myPowerUps.length > 0 && (
+                  <div className="powerups-container">
+                    <div className="powerups-label">⚡ VẬT PHẨM:</div>
+                    <div className="powerups-list">
+                      {myPowerUps.map((pu, idx) => (
+                        <div key={idx} className="powerup-item">
+                          <button
+                            className={`powerup-btn powerup-${pu.toLowerCase()}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (pu === "FREEZE") {
+                                // Hiện danh sách để chọn người freeze
+                                const others = players.filter(
+                                  (p) => p.id !== playerId
+                                );
+                                if (others.length > 0) {
+                                  const target =
+                                    others[
+                                      Math.floor(Math.random() * others.length)
+                                    ];
+                                  activatePowerUp(pu, target.id);
+                                }
+                              } else {
+                                activatePowerUp(pu);
+                              }
+                            }}
+                            title={POWER_UPS[pu]?.desc}
+                          >
+                            {POWER_UPS[pu]?.icon} {POWER_UPS[pu]?.name}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Active power-up indicator */}
+                {activePowerUp && (
+                  <div
+                    className={`active-powerup active-${activePowerUp.type.toLowerCase()}`}
+                  >
+                    {activePowerUp.type === "BOOST" && "⚡ TĂNG TỐC x2!"}
+                    {activePowerUp.type === "FREEZE" && "❄️ ĐÓNG BĂNG!"}
+                    {activePowerUp.type === "BONUS" && "🎁 +10 ĐIỂM!"}
+                  </div>
+                )}
+
+                {/* Frozen indicator */}
+                {myPlayer?.frozen && (
+                  <div className="frozen-overlay">
+                    <span>❄️ BẠN BỊ ĐÓNG BĂNG! ❄️</span>
+                  </div>
+                )}
               </div>
             )}
 
