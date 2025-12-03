@@ -154,6 +154,20 @@ const STEP_PER_CLICK = 2; // Mỗi click/space tiến bao nhiêu %
 const POINTS_CORRECT = 10;
 const POINTS_TIMEOUT = -5; // Trừ điểm khi hết giờ
 const ANSWER_TIME_LIMIT = 7; // Giây
+const SNIPER_THRESHOLD = 80; // % để có thể bị bắn tỉa
+const SNIPER_PENALTY = 30; // Bị bắn lùi bao nhiêu %
+const STEAL_TIME_THRESHOLD = 4; // Sau 4 giây có thể cướp đáp án
+const STEAL_WRONG_PENALTY = -15; // Cướp mà sai thì -15 điểm
+
+// Vòng quay may rủi
+const ROULETTE_OPTIONS = [
+  { id: "double", name: "x2 ĐIỂM!", icon: "🎁", effect: "double" },
+  { id: "lose", name: "MẤT ĐIỂM!", icon: "💀", effect: "lose" },
+  { id: "swap", name: "ĐỔI ĐIỂM!", icon: "🔄", effect: "swap" },
+  { id: "nothing", name: "AN TOÀN~", icon: "😇", effect: "nothing" },
+  { id: "bonus", name: "+5 BONUS!", icon: "⭐", effect: "bonus" },
+  { id: "steal", name: "CƯỚP 10đ!", icon: "🏴‍☠️", effect: "steal" },
+];
 
 const AVATARS = [
   "🦆",
@@ -227,6 +241,15 @@ export default function DuckRaceApp() {
   const [showFreezeSelection, setShowFreezeSelection] = useState(false); // Hiện UI chọn người freeze
   const [answerTimer, setAnswerTimer] = useState(7); // Bộ đếm giờ trả lời (7 giây)
   const [showRules, setShowRules] = useState(false); // Hiện bảng nội quy
+
+  // === NEW FEATURES ===
+  const [sniperTarget, setSniperTarget] = useState(null); // Người đang ở 80%+ có thể bị bắn
+  const [canStealAnswer, setCanStealAnswer] = useState(false); // Có thể cướp đáp án không
+  const [showRoulette, setShowRoulette] = useState(false); // Hiện vòng quay
+  const [rouletteResult, setRouletteResult] = useState(null); // Kết quả vòng quay
+  const [isSpinning, setIsSpinning] = useState(false); // Đang quay
+  const [lastAnswerPoints, setLastAnswerPoints] = useState(0); // Điểm vừa được từ câu trả lời
+  const [sniperCooldown, setSniperCooldown] = useState(false); // Đã bắn chưa trong round này
 
   const lastPressTime = useRef(0);
   const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
@@ -416,6 +439,15 @@ export default function DuckRaceApp() {
     );
     await updateDoc(playerRef, { position: newPosition });
 
+    // === SNIPER: Kiểm tra nếu vượt 80% thì có thể bị bắn ===
+    if (
+      newPosition >= SNIPER_THRESHOLD &&
+      myPlayer.position < SNIPER_THRESHOLD
+    ) {
+      // Vừa vượt qua ngưỡng 80%
+      setSniperTarget(playerId);
+    }
+
     // Kiểm tra về đích
     if (newPosition >= FINISH_LINE && !gameState.winnerId) {
       const gameStateRef = doc(
@@ -499,6 +531,7 @@ export default function DuckRaceApp() {
     if (gameState.status === "answering") {
       // Reset timer khi bắt đầu trả lời
       setAnswerTimer(ANSWER_TIME_LIMIT);
+      setCanStealAnswer(false); // Reset steal
 
       const interval = setInterval(() => {
         setAnswerTimer((prev) => {
@@ -508,6 +541,10 @@ export default function DuckRaceApp() {
             handleTimeout();
             return 0;
           }
+          // Sau 4 giây thì cho phép cướp đáp án
+          if (prev <= ANSWER_TIME_LIMIT - STEAL_TIME_THRESHOLD) {
+            setCanStealAnswer(true);
+          }
           return prev - 1;
         });
       }, 1000);
@@ -515,6 +552,164 @@ export default function DuckRaceApp() {
       return () => clearInterval(interval);
     }
   }, [gameState.status, gameState.winnerId, handleTimeout]);
+
+  // === SNIPER: Detect ai đang ở 80%+ ===
+  useEffect(() => {
+    if (gameState.status === "racing") {
+      const target = players.find(
+        (p) =>
+          p.position >= SNIPER_THRESHOLD &&
+          p.position < FINISH_LINE &&
+          p.id !== playerId
+      );
+      setSniperTarget(target || null);
+    } else {
+      setSniperTarget(null);
+      setSniperCooldown(false);
+    }
+  }, [players, gameState.status, playerId]);
+
+  // === SNIPER: Bắn tỉa người đang dẫn đầu ===
+  const handleSnipe = async (targetId) => {
+    if (sniperCooldown || !targetId) return;
+
+    const targetPlayer = players.find((p) => p.id === targetId);
+    if (!targetPlayer || targetPlayer.position < SNIPER_THRESHOLD) return;
+
+    setSniperCooldown(true); // Chỉ được bắn 1 lần mỗi round
+
+    const targetRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players",
+      targetId
+    );
+
+    // Lùi target về max(0, position - SNIPER_PENALTY)
+    const newPosition = Math.max(0, targetPlayer.position - SNIPER_PENALTY);
+    await updateDoc(targetRef, { position: newPosition });
+
+    // Hiện thông báo
+    setActivePowerUp({ type: "SNIPER", targetName: targetPlayer.name });
+    setTimeout(() => setActivePowerUp(null), 2000);
+  };
+
+  // === CƯỚP ĐÁP ÁN ===
+  const handleStealAnswer = async () => {
+    if (!canStealAnswer || gameState.winnerId === playerId) return;
+
+    // Chuyển quyền trả lời sang người cướp
+    const gameStateRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "game_config",
+      "gameState"
+    );
+    await updateDoc(gameStateRef, {
+      winnerId: playerId,
+      answerStolen: true, // Đánh dấu là bị cướp
+    });
+    setCanStealAnswer(false);
+  };
+
+  // === VÒNG QUAY MAY RỦI ===
+  const spinRoulette = async (pointsEarned) => {
+    setShowRoulette(true);
+    setIsSpinning(true);
+    setLastAnswerPoints(pointsEarned);
+
+    // Random kết quả sau 2 giây
+    setTimeout(async () => {
+      const result =
+        ROULETTE_OPTIONS[Math.floor(Math.random() * ROULETTE_OPTIONS.length)];
+      setRouletteResult(result);
+      setIsSpinning(false);
+
+      // Áp dụng effect
+      const myPlayer = players.find((p) => p.id === playerId);
+      const playerRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "players",
+        playerId
+      );
+
+      let finalScore = myPlayer?.score || 0;
+
+      switch (result.effect) {
+        case "double":
+          finalScore += pointsEarned; // Đã được +10, giờ +10 nữa = x2
+          break;
+        case "lose":
+          finalScore -= pointsEarned; // Mất điểm vừa được
+          break;
+        case "swap": {
+          // Đổi điểm với người random khác
+          const others = players.filter((p) => p.id !== playerId);
+          if (others.length > 0) {
+            const randomOther =
+              others[Math.floor(Math.random() * others.length)];
+            const otherRef = doc(
+              db,
+              "artifacts",
+              appId,
+              "public",
+              "data",
+              "players",
+              randomOther.id
+            );
+            await updateDoc(otherRef, { score: finalScore });
+            finalScore = randomOther.score;
+          }
+          break;
+        }
+        case "bonus":
+          finalScore += 5;
+          break;
+        case "steal": {
+          // Cướp 10 điểm từ người dẫn đầu
+          const leader = players
+            .filter((p) => p.id !== playerId)
+            .sort((a, b) => b.score - a.score)[0];
+          if (leader && leader.score >= 10) {
+            const leaderRef = doc(
+              db,
+              "artifacts",
+              appId,
+              "public",
+              "data",
+              "players",
+              leader.id
+            );
+            await updateDoc(leaderRef, { score: leader.score - 10 });
+            finalScore += 10;
+          }
+          break;
+        }
+        case "nothing":
+        default:
+          // Không có gì
+          break;
+      }
+
+      await updateDoc(playerRef, { score: Math.max(0, finalScore) });
+
+      // Ẩn roulette sau 2 giây
+      setTimeout(() => {
+        setShowRoulette(false);
+        setRouletteResult(null);
+      }, 2500);
+    }, 2000);
+  };
 
   // --- ACTIONS ---
   const joinGame = async () => {
@@ -588,6 +783,9 @@ export default function DuckRaceApp() {
     );
     const myPlayer = players.find((p) => p.id === playerId);
     const currentStreak = myPlayer?.streak || 0;
+    const wasStolen = gameState.answerStolen; // Kiểm tra có phải cướp đáp án không
+
+    let pointsEarned = 0;
 
     if (isCorrect) {
       const newStreak = currentStreak + 1;
@@ -600,15 +798,28 @@ export default function DuckRaceApp() {
         setShowPowerUpSelection(true); // Hiện UI chọn power-up
       }
 
+      pointsEarned = wasStolen ? 15 : POINTS_CORRECT; // Cướp đúng = +15
+
       await updateDoc(playerRef, {
-        score: (myPlayer?.score || 0) + POINTS_CORRECT,
+        score: (myPlayer?.score || 0) + pointsEarned,
         streak: newStreak,
       });
+
+      // === VÒNG QUAY MAY RỦI sau khi trả lời đúng ===
+      spinRoulette(pointsEarned);
     } else {
       // Trả lời sai -> reset streak
-      await updateDoc(playerRef, {
-        streak: 0,
-      });
+      // Nếu cướp mà sai thì -15 điểm
+      if (wasStolen) {
+        await updateDoc(playerRef, {
+          score: Math.max(0, (myPlayer?.score || 0) + STEAL_WRONG_PENALTY),
+          streak: 0,
+        });
+      } else {
+        await updateDoc(playerRef, {
+          streak: 0,
+        });
+      }
     }
 
     // Chuyển sang hiển thị đáp án
@@ -624,6 +835,7 @@ export default function DuckRaceApp() {
     await updateDoc(gameStateRef, {
       status: "showing_answer",
       winnerAnswer: optionIndex,
+      answerStolen: false, // Reset flag
     });
   };
 
@@ -1028,19 +1240,23 @@ export default function DuckRaceApp() {
                     🏆 <strong>{winner?.name}</strong> về đích trước!
                     {gameState.status === "answering" && " Đang trả lời..."}
                   </div>
-                  {/* Timer cho Admin */}
-                  {gameState.status === "answering" && (
-                    <div
-                      className={`answer-timer admin-timer ${
-                        answerTimer <= 3 ? "timer-urgent" : ""
-                      }`}
-                    >
-                      <span className="timer-icon">⏱️</span>
-                      <span className="timer-value">{answerTimer}</span>
-                      <span className="timer-text">giây</span>
-                    </div>
-                  )}
                   <div className="question-box">
+                    {/* Timer thanh ngang cho Admin */}
+                    {gameState.status === "answering" && (
+                      <div className="timer-bar-container">
+                        <div
+                          className={`timer-bar ${
+                            answerTimer <= 3 ? "timer-bar-urgent" : ""
+                          }`}
+                          style={{
+                            width: `${
+                              (answerTimer / ANSWER_TIME_LIMIT) * 100
+                            }%`,
+                          }}
+                        />
+                        <span className="timer-bar-text">{answerTimer}s</span>
+                      </div>
+                    )}
                     <p className="question-number">
                       Câu {gameState.currentQuestionIndex + 1}/{TOTAL_QUESTIONS}
                     </p>
@@ -1141,21 +1357,14 @@ export default function DuckRaceApp() {
                       ⏱️ <strong>Thời gian:</strong> Có 7 giây để trả lời
                     </li>
                     <li>
-                      ✅ <strong>Đúng:</strong> +10 điểm
+                      ✅ <strong>Đúng:</strong> +10 điểm + QUAY ROULETTE 🎰
                     </li>
                     <li>
-                      ❌ <strong>Sai:</strong> 0 điểm
+                      🎯 <strong>Sniper:</strong> Ai đạt 80%+ có thể bị BẮN lùi!
                     </li>
                     <li>
-                      ⏰ <strong>Hết giờ:</strong> -5 điểm
-                    </li>
-                    <li>
-                      🔥 <strong>Streak:</strong> Đúng 3 câu liên tiếp = nhận
-                      vật phẩm
-                    </li>
-                    <li>
-                      ⚡ <strong>Vật phẩm:</strong> Tăng tốc, Đóng băng đối thủ,
-                      Bonus điểm
+                      🏴‍☠️ <strong>Cướp:</strong> Sau 4s có thể cướp quyền trả
+                      lời!
                     </li>
                     <li>
                       🚫 <strong>Gian lận:</strong> Dùng macro sẽ bị phạt!
@@ -1327,8 +1536,34 @@ export default function DuckRaceApp() {
                     {activePowerUp.type === "FREEZE" &&
                       `❄️ ĐÓNG BĂNG ${activePowerUp.targetName}!`}
                     {activePowerUp.type === "BONUS" && "🎁 +10 ĐIỂM!"}
+                    {activePowerUp.type === "SNIPER" &&
+                      `🎯 BẮN TRÚNG ${activePowerUp.targetName}!`}
                   </div>
                 )}
+
+                {/* === SNIPER BUTTON === */}
+                {sniperTarget &&
+                  !sniperCooldown &&
+                  sniperTarget.id !== playerId && (
+                    <div
+                      className="sniper-container"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="sniper-alert">
+                        🎯 {sniperTarget.avatar} {sniperTarget.name} đang ở{" "}
+                        {Math.round(sniperTarget.position)}%!
+                      </div>
+                      <button
+                        className="sniper-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSnipe(sniperTarget.id);
+                        }}
+                      >
+                        🔫 BẮN TỈA! (-{SNIPER_PENALTY}%)
+                      </button>
+                    </div>
+                  )}
 
                 {/* Frozen indicator */}
                 {myPlayer?.frozen && (
@@ -1359,17 +1594,21 @@ export default function DuckRaceApp() {
                     <div className="winner-banner you-won">
                       🎉 BẠN VỀ ĐÍCH TRƯỚC! HÃY TRẢ LỜI! 🎉
                     </div>
-                    {/* Timer đếm ngược */}
-                    <div
-                      className={`answer-timer ${
-                        answerTimer <= 3 ? "timer-urgent" : ""
-                      }`}
-                    >
-                      <span className="timer-icon">⏱️</span>
-                      <span className="timer-value">{answerTimer}</span>
-                      <span className="timer-text">giây</span>
-                    </div>
                     <div className="question-box">
+                      {/* Timer thanh ngang */}
+                      <div className="timer-bar-container">
+                        <div
+                          className={`timer-bar ${
+                            answerTimer <= 3 ? "timer-bar-urgent" : ""
+                          }`}
+                          style={{
+                            width: `${
+                              (answerTimer / ANSWER_TIME_LIMIT) * 100
+                            }%`,
+                          }}
+                        />
+                        <span className="timer-bar-text">{answerTimer}s</span>
+                      </div>
                       <p className="question-number">
                         Câu {gameState.currentQuestionIndex + 1}/
                         {TOTAL_QUESTIONS}
@@ -1397,16 +1636,34 @@ export default function DuckRaceApp() {
                     <h2>
                       {winner?.avatar} {winner?.name} đang trả lời...
                     </h2>
-                    {/* Timer cho người xem */}
-                    <div
-                      className={`answer-timer small ${
-                        answerTimer <= 3 ? "timer-urgent" : ""
-                      }`}
-                    >
-                      <span className="timer-icon">⏱️</span>
-                      <span className="timer-value">{answerTimer}</span>
-                      <span className="timer-text">giây</span>
+                    {/* Timer thanh ngang cho người xem */}
+                    <div className="timer-bar-container small">
+                      <div
+                        className={`timer-bar ${
+                          answerTimer <= 3 ? "timer-bar-urgent" : ""
+                        }`}
+                        style={{
+                          width: `${(answerTimer / ANSWER_TIME_LIMIT) * 100}%`,
+                        }}
+                      />
+                      <span className="timer-bar-text">{answerTimer}s</span>
                     </div>
+
+                    {/* === NÚT CƯỚP ĐÁP ÁN === */}
+                    {canStealAnswer && (
+                      <div className="steal-container">
+                        <p className="steal-warning">
+                          ⚠️ Cướp đúng +15đ, sai -15đ!
+                        </p>
+                        <button
+                          className="steal-btn"
+                          onClick={handleStealAnswer}
+                        >
+                          🏴‍☠️ CƯỚP ĐÁP ÁN!
+                        </button>
+                      </div>
+                    )}
+
                     <p>Chờ xem kết quả nhé!</p>
                   </div>
                 )}
@@ -1643,13 +1900,43 @@ export default function DuckRaceApp() {
                   <h3>📊 TÍNH ĐIỂM</h3>
                   <ul>
                     <li>
-                      ✅ <strong>Trả lời đúng:</strong> +10 điểm
+                      ✅ <strong>Trả lời đúng:</strong> +10 điểm + QUAY ROULETTE
                     </li>
                     <li>
                       ❌ <strong>Trả lời sai:</strong> 0 điểm
                     </li>
                     <li>
                       ⏰ <strong>Hết giờ:</strong> -5 điểm
+                    </li>
+                  </ul>
+                </div>
+                <div className="rule-section">
+                  <h3>🎰 VÒNG QUAY MAY RỦI</h3>
+                  <ul>
+                    <li>
+                      🎁 <strong>x2 Điểm:</strong> Nhân đôi điểm vừa được
+                    </li>
+                    <li>
+                      💀 <strong>Mất điểm:</strong> Mất điểm vừa được
+                    </li>
+                    <li>
+                      🔄 <strong>Đổi điểm:</strong> Swap với người khác
+                    </li>
+                    <li>
+                      🏴‍☠️ <strong>Cướp:</strong> Lấy 10đ từ người dẫn đầu
+                    </li>
+                  </ul>
+                </div>
+                <div className="rule-section warning">
+                  <h3>🔥 TÍNH NĂNG CAY CÚ</h3>
+                  <ul>
+                    <li>
+                      🎯 <strong>Sniper:</strong> Khi ai đạt 80%+, có thể BẮN họ
+                      lùi 30%!
+                    </li>
+                    <li>
+                      🏴‍☠️ <strong>Cướp đáp án:</strong> Sau 4s có thể cướp quyền
+                      trả lời (đúng +15, sai -15)
                     </li>
                   </ul>
                 </div>
@@ -1686,6 +1973,47 @@ export default function DuckRaceApp() {
               >
                 ✓ ĐÃ HIỂU
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* === VÒNG QUAY MAY RỦI === */}
+        {showRoulette && (
+          <div className="roulette-overlay">
+            <div className="roulette-box">
+              <h2>🎰 VÒNG QUAY MAY RỦI!</h2>
+              {isSpinning ? (
+                <div className="roulette-spinning">
+                  <div className="roulette-wheel">
+                    {ROULETTE_OPTIONS.map((opt, idx) => (
+                      <div key={idx} className="roulette-item spinning">
+                        {opt.icon}
+                      </div>
+                    ))}
+                  </div>
+                  <p>Đang quay...</p>
+                </div>
+              ) : rouletteResult ? (
+                <div
+                  className={`roulette-result result-${rouletteResult.effect}`}
+                >
+                  <div className="result-icon">{rouletteResult.icon}</div>
+                  <div className="result-name">{rouletteResult.name}</div>
+                  <p className="result-desc">
+                    {rouletteResult.effect === "double" &&
+                      `Điểm x2! +${lastAnswerPoints} thêm!`}
+                    {rouletteResult.effect === "lose" &&
+                      `Mất ${lastAnswerPoints} điểm vừa được!`}
+                    {rouletteResult.effect === "swap" &&
+                      "Đã đổi điểm với người khác!"}
+                    {rouletteResult.effect === "bonus" && "+5 điểm bonus!"}
+                    {rouletteResult.effect === "steal" &&
+                      "Cướp 10 điểm từ người dẫn đầu!"}
+                    {rouletteResult.effect === "nothing" &&
+                      "May mắn! Không mất gì~"}
+                  </p>
+                </div>
+              ) : null}
             </div>
           </div>
         )}
