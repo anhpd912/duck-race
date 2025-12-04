@@ -255,7 +255,7 @@ const QUESTIONS = [
 
 const TOTAL_QUESTIONS = 20; // Giới hạn hiển thị 20 câu, sau đó lặp lại
 const FINISH_LINE = 100; // % để về đích
-const STEP_PER_CLICK = 1; // Mỗi click/space tiến bao nhiêu % (giảm từ 2 xuống 1 để chạy lâu hơn)
+const STEP_PER_CLICK = 1.5; // Mỗi click/space tiến bao nhiêu %
 const POINTS_CORRECT = 10;
 const POINTS_TIMEOUT = -5; // Trừ điểm khi hết giờ
 const ANSWER_TIME_LIMIT = 7; // Giây
@@ -900,51 +900,6 @@ export default function DuckRaceApp() {
       setAnswerTimer(ANSWER_TIME_LIMIT);
       setCanStealAnswer(false); // Reset steal
 
-      // === VICTORY CELEBRATION: Phát nhạc + pháo hoa khi về đích ===
-      if (gameState.winnerId === playerId) {
-        setShowVictoryCelebration(true);
-
-        // Tạo nhạc chiến thắng bằng Web Audio API
-        try {
-          const audioContext = new (window.AudioContext ||
-            window.webkitAudioContext)();
-
-          // Mở khóa audio context (cần user interaction)
-          if (audioContext.state === "suspended") {
-            audioContext.resume();
-          }
-
-          // Tạo nhạc chiến thắng đơn giản
-          const playVictorySound = () => {
-            const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
-            notes.forEach((freq, i) => {
-              const oscillator = audioContext.createOscillator();
-              const gainNode = audioContext.createGain();
-
-              oscillator.connect(gainNode);
-              gainNode.connect(audioContext.destination);
-
-              oscillator.frequency.value = freq;
-              oscillator.type = "sine";
-
-              const startTime = audioContext.currentTime + i * 0.15;
-              gainNode.gain.setValueAtTime(0.3, startTime);
-              gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3);
-
-              oscillator.start(startTime);
-              oscillator.stop(startTime + 0.3);
-            });
-          };
-
-          playVictorySound();
-        } catch (error) {
-          console.log("Audio playback blocked or not supported:", error);
-        }
-
-        // Tắt celebration sau 5 giây
-        setTimeout(() => setShowVictoryCelebration(false), 5000);
-      }
-
       const interval = setInterval(() => {
         setAnswerTimer((prev) => {
           if (prev <= 1) {
@@ -964,6 +919,58 @@ export default function DuckRaceApp() {
       return () => clearInterval(interval);
     }
   }, [gameState.status, gameState.winnerId, handleTimeout, playerId]);
+
+  // === CELEBRATION KHI ADMIN DỪNG GAME ===
+  useEffect(() => {
+    if (gameState.status === "finished" && playerId) {
+      const myPlayer = players.find((p) => p.id === playerId);
+      if (!myPlayer) return;
+
+      // Tính rank của player
+      const sortedByScore = [...players].sort((a, b) => {
+        if (b.progress !== a.progress) return b.progress - a.progress;
+        return b.score - a.score;
+      });
+      const rank = sortedByScore.findIndex((p) => p.id === playerId) + 1;
+
+      // Chỉ hiện celebration cho top 3
+      if (rank <= 3) {
+        setShowVictoryCelebration(true);
+
+        // Phát nhạc chiến thắng
+        try {
+          const audioContext = new (window.AudioContext ||
+            window.webkitAudioContext)();
+          if (audioContext.state === "suspended") {
+            audioContext.resume();
+          }
+
+          const playVictorySound = () => {
+            const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+            notes.forEach((freq, i) => {
+              const oscillator = audioContext.createOscillator();
+              const gainNode = audioContext.createGain();
+              oscillator.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              oscillator.frequency.value = freq;
+              oscillator.type = "sine";
+              const startTime = audioContext.currentTime + i * 0.15;
+              gainNode.gain.setValueAtTime(0.3, startTime);
+              gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3);
+              oscillator.start(startTime);
+              oscillator.stop(startTime + 0.3);
+            });
+          };
+          playVictorySound();
+        } catch (error) {
+          console.log("Audio playback blocked:", error);
+        }
+
+        // Tắt celebration sau 6 giây
+        setTimeout(() => setShowVictoryCelebration(false), 6000);
+      }
+    }
+  }, [gameState.status, playerId, players]);
 
   // === SNIPER: Detect ai đang ở 80%+ ===
   useEffect(() => {
@@ -2707,38 +2714,64 @@ export default function DuckRaceApp() {
         )}
 
         {/* === 🎆 VICTORY CELEBRATION - Pháo hoa chiến thắng === */}
-        {showVictoryCelebration && (
-          <div className="victory-celebration">
-            <div className="fireworks-container">
-              {CONFETTI_POSITIONS.slice(0, 12).map((pos, i) => (
-                <div
-                  key={i}
-                  className="firework"
-                  style={{
-                    left: `${pos.left}%`,
-                    top: `${pos.top}%`,
-                    animationDelay: `${pos.delay}s`,
-                  }}
-                >
-                  {[...Array(20)].map((_, j) => (
+        {showVictoryCelebration &&
+          (() => {
+            const myPlayer = players.find((p) => p.id === playerId);
+            if (!myPlayer) return null;
+
+            const sortedByScore = [...players].sort((a, b) => {
+              if (b.progress !== a.progress) return b.progress - a.progress;
+              return b.score - a.score;
+            });
+            const rank = sortedByScore.findIndex((p) => p.id === playerId) + 1;
+
+            const titles = {
+              1: {
+                emoji: "🏆",
+                text: "GIẢI NHẤT",
+                subtitle: "BẠN LÀ NHÀ VÔ ĐỊCH!",
+              },
+              2: { emoji: "🥈", text: "GIẢI NHÌ", subtitle: "XUẤT SẮC!" },
+              3: { emoji: "🥉", text: "GIẢI BA", subtitle: "TUYỆT VỜI!" },
+            };
+
+            const prize = titles[rank] || titles[3];
+
+            return (
+              <div className="victory-celebration">
+                <div className="fireworks-container">
+                  {CONFETTI_POSITIONS.slice(0, 12).map((pos, i) => (
                     <div
-                      key={j}
-                      className="firework-particle"
+                      key={i}
+                      className="firework"
                       style={{
-                        "--angle": `${(j * 360) / 20}deg`,
-                        "--hue": `${(i * 30 + j * 18) % 360}`,
+                        left: `${pos.left}%`,
+                        top: `${pos.top}%`,
+                        animationDelay: `${pos.delay}s`,
                       }}
-                    />
+                    >
+                      {[...Array(20)].map((_, j) => (
+                        <div
+                          key={j}
+                          className="firework-particle"
+                          style={{
+                            "--angle": `${(j * 360) / 20}deg`,
+                            "--hue": `${(i * 30 + j * 18) % 360}`,
+                          }}
+                        />
+                      ))}
+                    </div>
                   ))}
                 </div>
-              ))}
-            </div>
-            <div className="victory-message">
-              <h1>🏆 CHIẾN THẮNG! 🏆</h1>
-              <p>Bạn đã về đích!</p>
-            </div>
-          </div>
-        )}
+                <div className="victory-message">
+                  <h1>
+                    {prize.emoji} {prize.text} {prize.emoji}
+                  </h1>
+                  <p>{prize.subtitle}</p>
+                </div>
+              </div>
+            );
+          })()}
       </main>
     </div>
   );
