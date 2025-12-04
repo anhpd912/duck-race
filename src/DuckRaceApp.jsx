@@ -142,29 +142,34 @@ const QUESTIONS = [
     answer: 2,
   },
   {
-    q: "Theo Hồ Chí Minh, đại đoàn kết dân tộc là gì?",
+    q: "Khối đại đoàn kết toàn dân tộc chỉ trở thành lực lượng to lớn, có sức mạnh khi được tập hợp và tổ chức lại thành một khối vững chắc. Khối vững chắc đó được gọi là gì?",
     options: [
-      "Chỉ đoàn kết trong Đảng",
-      "Đoàn kết toàn dân tộc, không phân biệt giai cấp, tôn giáo, dân tộc",
-      "Đoàn kết giữa các nước xã hội chủ nghĩa",
-      "Đoàn kết trong quân đội",
+      "Đảng Cộng sản Việt Nam",
+      "Nhà nước pháp quyền xã hội chủ nghĩa",
+      "Mặt trận dân tộc thống nhất",
+      "Các hội ái hữu và tương trợ",
+    ],
+    answer: 2,
+  },
+  {
+    q: "Tên gọi của Mặt trận dân tộc thống nhất vào năm 1930 là gì?",
+    options: [
+      "Mặt trận Dân chủ Đông Dương",
+      "Hội Phản đế đồng minh",
+      "Mặt trận Việt Minh",
+      "Mặt trận Liên Việt",
     ],
     answer: 1,
   },
   {
-    q: "Theo Hồ Chí Minh, lực lượng nào là nền tảng của khối đại đoàn kết dân tộc?",
+    q: "Dù có nhiều tên gọi khác nhau qua các thời kỳ, nhưng mục tiêu chung mà Mặt trận dân tộc thống nhất phấn đấu là gì?",
     options: [
-      "Trí thức và tư sản",
-      "Công nhân và nông dân",
-      "Quân đội và công an",
-      "Thanh niên và học sinh",
+      "Xây dựng kinh tế thị trường và hội nhập quốc tế",
+      "Đấu tranh giai cấp và chuyên chính vô sản",
+      "Độc lập, thống nhất của Tổ quốc và tự do, hạnh phúc của nhân dân",
+      "Xây dựng văn hóa tiên tiến, đậm đà bản sắc dân tộc",
     ],
-    answer: 1,
-  },
-  {
-    q: "Mặt trận Việt Minh được thành lập năm nào, thể hiện tư tưởng đại đoàn kết của Bác?",
-    options: ["1930", "1941", "1945", "1954"],
-    answer: 1,
+    answer: 2,
   },
   {
     q: "Theo Hồ Chí Minh, mục tiêu của đại đoàn kết dân tộc là gì?",
@@ -249,7 +254,7 @@ const QUESTIONS = [
 ];
 
 const TOTAL_QUESTIONS = 20; // Giới hạn hiển thị 20 câu, sau đó lặp lại
-const FINISH_LINE = 100; // % để về đích
+const FINISH_LINE = 150; // % để về đích (tăng lên 150% để đường dài hơn)
 const STEP_PER_CLICK = 2; // Mỗi click/space tiến bao nhiêu %
 const POINTS_CORRECT = 10;
 const POINTS_TIMEOUT = -5; // Trừ điểm khi hết giờ
@@ -301,9 +306,12 @@ const RANDOM_EVENTS = [
 
 // Speed Traps - Vùng bẫy trên đường đua
 const SPEED_TRAP_ZONES = [
-  { start: 25, end: 35, name: "🕳️ HỐ XỊN" },
-  { start: 55, end: 65, name: "🧊 BĂNG TRƠN" },
-  { start: 75, end: 85, name: "🌊 SÓNG TO" },
+  { start: 20, end: 30, name: "🕳️ HỐ XỊN", type: "hole" },
+  { start: 45, end: 55, name: "🧊 BĂNG TRƠN", type: "ice" },
+  { start: 70, end: 80, name: "🌊 SÓNG TO", type: "wave" },
+  { start: 95, end: 105, name: "⚡ ĐIỆN GIẬT", type: "electric" },
+  { start: 120, end: 130, name: "🔥 LỬA CHÁY", type: "fire" },
+  { start: 140, end: 148, name: "💀 TỬ THẦN", type: "death" },
 ];
 const SPEED_TRAP_PENALTY = 0.5; // Chậm 50% khi trong trap
 const RANDOM_EVENT_CHANCE = 0.03; // 3% mỗi lần click
@@ -402,6 +410,10 @@ export default function DuckRaceApp() {
   const [karmaNotify, setKarmaNotify] = useState(null); // Thông báo karma backfire
   const [bananaLanes, setBananaLanes] = useState({}); // { playerId: position } - vỏ chuối trên từng lane
   const [waveEffect, setWaveEffect] = useState(null); // Hiệu ứng sóng nhẹ + text
+  const [roastMessage, setRoastMessage] = useState(null); // Câu châm biếm
+  const [showVictoryCelebration, setShowVictoryCelebration] = useState(false); // Pháo hoa + nhạc chiến thắng
+
+  const victoryAudioRef = useRef(null); // Ref cho audio element
 
   const lastPressTime = useRef(0);
   const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
@@ -888,6 +900,51 @@ export default function DuckRaceApp() {
       setAnswerTimer(ANSWER_TIME_LIMIT);
       setCanStealAnswer(false); // Reset steal
 
+      // === VICTORY CELEBRATION: Phát nhạc + pháo hoa khi về đích ===
+      if (gameState.winnerId === playerId) {
+        setShowVictoryCelebration(true);
+
+        // Tạo nhạc chiến thắng bằng Web Audio API
+        try {
+          const audioContext = new (window.AudioContext ||
+            window.webkitAudioContext)();
+
+          // Mở khóa audio context (cần user interaction)
+          if (audioContext.state === "suspended") {
+            audioContext.resume();
+          }
+
+          // Tạo nhạc chiến thắng đơn giản
+          const playVictorySound = () => {
+            const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+            notes.forEach((freq, i) => {
+              const oscillator = audioContext.createOscillator();
+              const gainNode = audioContext.createGain();
+
+              oscillator.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+
+              oscillator.frequency.value = freq;
+              oscillator.type = "sine";
+
+              const startTime = audioContext.currentTime + i * 0.15;
+              gainNode.gain.setValueAtTime(0.3, startTime);
+              gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3);
+
+              oscillator.start(startTime);
+              oscillator.stop(startTime + 0.3);
+            });
+          };
+
+          playVictorySound();
+        } catch (error) {
+          console.log("Audio playback blocked or not supported:", error);
+        }
+
+        // Tắt celebration sau 5 giây
+        setTimeout(() => setShowVictoryCelebration(false), 5000);
+      }
+
       const interval = setInterval(() => {
         setAnswerTimer((prev) => {
           if (prev <= 1) {
@@ -906,7 +963,7 @@ export default function DuckRaceApp() {
 
       return () => clearInterval(interval);
     }
-  }, [gameState.status, gameState.winnerId, handleTimeout]);
+  }, [gameState.status, gameState.winnerId, handleTimeout, playerId]);
 
   // === SNIPER: Detect ai đang ở 80%+ ===
   useEffect(() => {
@@ -1066,7 +1123,8 @@ export default function DuckRaceApp() {
   const handleAnswer = async (optionIndex) => {
     if (gameState.winnerId !== playerId) return;
 
-    const currentQ = QUESTIONS[gameState.currentQuestionIndex];
+    const currentQ =
+      QUESTIONS[gameState.currentQuestionIndex % QUESTIONS.length];
     const isCorrect = optionIndex === currentQ.answer;
 
     const playerRef = doc(
@@ -1083,9 +1141,29 @@ export default function DuckRaceApp() {
     const wasStolen = gameState.answerStolen; // Kiểm tra có phải cướp đáp án không
 
     let pointsEarned = 0;
+    let roastMsg = null;
 
     if (isCorrect) {
       const newStreak = currentStreak + 1;
+
+      // Câu châm biếm khi đúng liên tiếp
+      if (newStreak >= 3) {
+        const correctRoasts = [
+          "Uây bro học ác quá nhỉ, đúng liên tiếp luôn mờ :v",
+          "Á à, có cao thủ đây rồi! Học thuộc lòng hết rồi hả? 😎",
+          "Wow đúng hoài, chắc nghe thuyết trình chăm chú lắm nhỉ? 📚",
+          "Đỉnh vãi, đúng liên tù tì! Bọn tôi thuyết trình có hay không? 🤓",
+          "Ơ hay, đúng mãi thế! Chắc note kĩ lắm nhỉ? 📝",
+        ];
+        roastMsg =
+          correctRoasts[Math.floor(Math.random() * correctRoasts.length)];
+        setRoastMessage({
+          type: "correct",
+          message: roastMsg,
+          streak: newStreak,
+        });
+        setTimeout(() => setRoastMessage(null), 3500);
+      }
 
       // Nhận power-up khi đạt 3 câu liên tiếp - cho player CHỌN
       if (
@@ -1103,6 +1181,20 @@ export default function DuckRaceApp() {
       });
       // Điểm đã được cộng trực tiếp, không cần vòng quay nữa
     } else {
+      // Câu châm biếm khi trả lời sai
+      const wrongRoasts = [
+        "Gà thế câu này mà để sai à? 🐔",
+        "Có thực sự nghe bọn tôi thuyết trình không đấy???? 😤",
+        "Ơ kìa, câu ez mà sai luôn! Ngủ gật à? 😴",
+        "Sai rồi má ơi! Có lắng nghe không vậy trời? 🤦",
+        "Thôi game over cho bạn này! Câu này cũng sai à? 💀",
+        "Chắc ngồi chơi điện thoại lúc thuyết trình nhỉ? 📱",
+        "Lỗi này phải reset IQ rồi đó! 🤪",
+      ];
+      roastMsg = wrongRoasts[Math.floor(Math.random() * wrongRoasts.length)];
+      setRoastMessage({ type: "wrong", message: roastMsg });
+      setTimeout(() => setRoastMessage(null), 3500);
+
       // Trả lời sai -> reset streak
       // Nếu cướp mà sai thì -15 điểm
       if (wasStolen) {
@@ -1386,12 +1478,12 @@ export default function DuckRaceApp() {
     }
   };
 
-  // === AUTO NEXT QUESTION: Tự động chuyển câu sau 3 giây khi showing_answer ===
+  // === AUTO NEXT QUESTION: Tự động chuyển câu sau 4 giây khi showing_answer ===
   useEffect(() => {
     if (gameState.status === "showing_answer" && isAdmin) {
       const timer = setTimeout(() => {
         nextQuestion();
-      }, 3000); // 3 giây
+      }, 4000); // 4 giây
 
       return () => clearTimeout(timer);
     }
@@ -1439,7 +1531,10 @@ export default function DuckRaceApp() {
       <header className="header">
         <div className="header-left">
           <Terminal className="icon icon-pulse" />
-          <h1 className="header-title">TƯ TƯỞNG HỒ CHÍ MINH</h1>
+          <h1 className="header-title">
+            TƯ TƯỞNG HỒ CHÍ MINH GAME - 1 SẢN PHẨM CODE NGÀY ĐÊM CỦA NHÓM 1
+            ĐẤYYYY
+          </h1>
         </div>
         <div className="header-center">
           <div className="header-status">{statusText}</div>
@@ -1568,19 +1663,49 @@ export default function DuckRaceApp() {
                         <span>{Math.round(p.position)}%</span>
                       </div>
                       <div className="lane-track">
-                        {/* Speed Trap Zone - riêng từng lane */}
+                        {/* Speed Trap Zone - riêng từng lane với hiệu ứng đặc biệt */}
                         {SPEED_TRAP_ZONES.map((trap, idx) => {
                           const offset = (((playerIndex + idx) * 7) % 15) - 7;
                           return (
                             <div
                               key={idx}
-                              className="lane-speed-trap"
+                              className={`lane-speed-trap trap-${trap.type}`}
                               style={{
                                 left: `${trap.start + offset}%`,
                                 width: `${trap.end - trap.start}%`,
                               }}
                               title={trap.name}
-                            />
+                            >
+                              {trap.type === "fire" && (
+                                <>
+                                  <div className="fire-particle fire-1"></div>
+                                  <div className="fire-particle fire-2"></div>
+                                  <div className="fire-particle fire-3"></div>
+                                </>
+                              )}
+                              {trap.type === "ice" && (
+                                <>
+                                  <div className="ice-crystal ice-1">❄️</div>
+                                  <div className="ice-crystal ice-2">❄️</div>
+                                  <div className="ice-crystal ice-3">❄️</div>
+                                </>
+                              )}
+                              {trap.type === "electric" && (
+                                <>
+                                  <div className="electric-bolt bolt-1">⚡</div>
+                                  <div className="electric-bolt bolt-2">⚡</div>
+                                </>
+                              )}
+                              {trap.type === "wave" && (
+                                <div className="wave-animation">🌊</div>
+                              )}
+                              {trap.type === "death" && (
+                                <>
+                                  <div className="death-skull skull-1">💀</div>
+                                  <div className="death-skull skull-2">💀</div>
+                                </>
+                              )}
+                            </div>
                           );
                         })}
 
@@ -1812,19 +1937,49 @@ export default function DuckRaceApp() {
                         <span>{Math.round(p.position)}%</span>
                       </div>
                       <div className="lane-track">
-                        {/* Speed Trap Zone - riêng từng lane với offset random */}
+                        {/* Speed Trap Zone - riêng từng lane với offset random và hiệu ứng */}
                         {SPEED_TRAP_ZONES.map((trap, idx) => {
                           const offset = (((playerIndex + idx) * 7) % 15) - 7; // Random offset -7 to +7
                           return (
                             <div
                               key={idx}
-                              className="lane-speed-trap"
+                              className={`lane-speed-trap trap-${trap.type}`}
                               style={{
                                 left: `${trap.start + offset}%`,
                                 width: `${trap.end - trap.start}%`,
                               }}
                               title={trap.name}
-                            />
+                            >
+                              {trap.type === "fire" && (
+                                <>
+                                  <div className="fire-particle fire-1"></div>
+                                  <div className="fire-particle fire-2"></div>
+                                  <div className="fire-particle fire-3"></div>
+                                </>
+                              )}
+                              {trap.type === "ice" && (
+                                <>
+                                  <div className="ice-crystal ice-1">❄️</div>
+                                  <div className="ice-crystal ice-2">❄️</div>
+                                  <div className="ice-crystal ice-3">❄️</div>
+                                </>
+                              )}
+                              {trap.type === "electric" && (
+                                <>
+                                  <div className="electric-bolt bolt-1">⚡</div>
+                                  <div className="electric-bolt bolt-2">⚡</div>
+                                </>
+                              )}
+                              {trap.type === "wave" && (
+                                <div className="wave-animation">🌊</div>
+                              )}
+                              {trap.type === "death" && (
+                                <>
+                                  <div className="death-skull skull-1">💀</div>
+                                  <div className="death-skull skull-2">💀</div>
+                                </>
+                              )}
+                            </div>
                           );
                         })}
 
@@ -2522,6 +2677,65 @@ export default function DuckRaceApp() {
                   <p className="karma-lesson">Ác giả ác báo! 😈</p>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* === 😎 ROAST MESSAGE - Câu châm biếm === */}
+        {roastMessage && (
+          <div className={`roast-overlay roast-${roastMessage.type}`}>
+            <div className="roast-box">
+              {roastMessage.type === "correct" && (
+                <>
+                  <div className="roast-icon">😎</div>
+                  <h2>ĐỈNH CAO!</h2>
+                  <p className="roast-text">{roastMessage.message}</p>
+                  <p className="roast-streak">
+                    🔥 Streak: {roastMessage.streak}
+                  </p>
+                </>
+              )}
+              {roastMessage.type === "wrong" && (
+                <>
+                  <div className="roast-icon">🤦</div>
+                  <h2>ÔI TRỜI ƠI!</h2>
+                  <p className="roast-text">{roastMessage.message}</p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* === 🎆 VICTORY CELEBRATION - Pháo hoa chiến thắng === */}
+        {showVictoryCelebration && (
+          <div className="victory-celebration">
+            <div className="fireworks-container">
+              {CONFETTI_POSITIONS.slice(0, 12).map((pos, i) => (
+                <div
+                  key={i}
+                  className="firework"
+                  style={{
+                    left: `${pos.left}%`,
+                    top: `${pos.top}%`,
+                    animationDelay: `${pos.delay}s`,
+                  }}
+                >
+                  {[...Array(20)].map((_, j) => (
+                    <div
+                      key={j}
+                      className="firework-particle"
+                      style={{
+                        "--angle": `${(j * 360) / 20}deg`,
+                        "--hue": `${(i * 30 + j * 18) % 360}`,
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="victory-message">
+              <h1>🏆 CHIẾN THẮNG! 🏆</h1>
+              <p>Bạn đã về đích!</p>
             </div>
           </div>
         )}

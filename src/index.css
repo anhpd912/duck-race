@@ -330,6 +330,8 @@ body {
 
 .player-avatar {
   font-size: 1.5rem;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .player-score {
@@ -1102,6 +1104,8 @@ body {
   transition: left 0.1s linear;
   z-index: 10;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  will-change: left, transform;
+  backface-visibility: hidden;
 }
 
 .duck-me {
@@ -2742,17 +2746,286 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(239, 68, 68, 0.15),
-    rgba(239, 68, 68, 0.15) 5px,
-    transparent 5px,
-    transparent 10px
-  );
-  border-left: 1px dashed rgba(239, 68, 68, 0.4);
-  border-right: 1px dashed rgba(239, 68, 68, 0.4);
   z-index: 1;
   pointer-events: none;
+  overflow: hidden;
+}
+
+/* Fire trap */
+.lane-speed-trap.trap-fire {
+  background: linear-gradient(
+    to top,
+    rgba(255, 69, 0, 0.4),
+    rgba(255, 140, 0, 0.3),
+    rgba(255, 215, 0, 0.2)
+  );
+  border-left: 2px solid rgba(255, 69, 0, 0.6);
+  border-right: 2px solid rgba(255, 69, 0, 0.6);
+  animation: fire-glow 1s ease-in-out infinite;
+}
+
+@keyframes fire-glow {
+  0%,
+  100% {
+    box-shadow: inset 0 0 20px rgba(255, 69, 0, 0.4);
+  }
+  50% {
+    box-shadow: inset 0 0 40px rgba(255, 140, 0, 0.6);
+  }
+}
+
+.fire-particle {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  background: linear-gradient(to top, #ff4500, #ffa500, #ffff00);
+  border-radius: 50% 50% 0 0;
+  animation: fire-rise 1s ease-in-out infinite;
+  opacity: 0.8;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+.fire-1 {
+  left: 20%;
+  bottom: 0;
+  animation-delay: 0s;
+}
+
+.fire-2 {
+  left: 50%;
+  bottom: 0;
+  animation-delay: 0.3s;
+}
+
+.fire-3 {
+  left: 80%;
+  bottom: 0;
+  animation-delay: 0.6s;
+}
+
+@keyframes fire-rise {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-100%) scale(0.5);
+    opacity: 0;
+  }
+}
+
+/* Ice trap */
+.lane-speed-trap.trap-ice {
+  background: linear-gradient(
+    135deg,
+    rgba(135, 206, 250, 0.3),
+    rgba(173, 216, 230, 0.4),
+    rgba(135, 206, 250, 0.3)
+  );
+  border-left: 2px solid rgba(135, 206, 250, 0.7);
+  border-right: 2px solid rgba(135, 206, 250, 0.7);
+  animation: ice-shimmer 2s ease-in-out infinite;
+}
+
+@keyframes ice-shimmer {
+  0%,
+  100% {
+    box-shadow: inset 0 0 20px rgba(173, 216, 230, 0.5);
+  }
+  50% {
+    box-shadow: inset 0 0 40px rgba(135, 206, 250, 0.8);
+  }
+}
+
+.ice-crystal {
+  position: absolute;
+  font-size: 1.5rem;
+  animation: ice-float 3s ease-in-out infinite;
+  opacity: 0.6;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.ice-1 {
+  top: 10%;
+  left: 20%;
+  animation-delay: 0s;
+}
+
+.ice-2 {
+  top: 50%;
+  left: 50%;
+  animation-delay: 1s;
+}
+
+.ice-3 {
+  top: 30%;
+  left: 80%;
+  animation-delay: 2s;
+}
+
+@keyframes ice-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(180deg);
+  }
+}
+
+/* Electric trap */
+.lane-speed-trap.trap-electric {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 0, 0.2),
+    rgba(255, 215, 0, 0.3),
+    rgba(255, 255, 0, 0.2)
+  );
+  border-left: 2px solid rgba(255, 255, 0, 0.8);
+  border-right: 2px solid rgba(255, 255, 0, 0.8);
+  animation: electric-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes electric-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 10px rgba(255, 255, 0, 0.3);
+  }
+  50% {
+    box-shadow: inset 0 0 30px rgba(255, 255, 0, 0.7);
+  }
+}
+
+.electric-bolt {
+  position: absolute;
+  font-size: 2rem;
+  animation: electric-zap 0.8s ease-in-out infinite;
+  text-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+.bolt-1 {
+  top: 20%;
+  left: 30%;
+  animation-delay: 0s;
+}
+
+.bolt-2 {
+  top: 60%;
+  left: 70%;
+  animation-delay: 0.4s;
+}
+
+@keyframes electric-zap {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* Wave trap */
+.lane-speed-trap.trap-wave {
+  background: linear-gradient(
+    to right,
+    rgba(64, 164, 223, 0.2),
+    rgba(100, 149, 237, 0.3),
+    rgba(64, 164, 223, 0.2)
+  );
+  border-left: 2px solid rgba(64, 164, 223, 0.6);
+  border-right: 2px solid rgba(64, 164, 223, 0.6);
+}
+
+.wave-animation {
+  position: absolute;
+  font-size: 2rem;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: wave-move 2s ease-in-out infinite;
+}
+
+@keyframes wave-move {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+}
+
+/* Death trap */
+.lane-speed-trap.trap-death {
+  background: linear-gradient(
+    to top,
+    rgba(139, 0, 0, 0.4),
+    rgba(75, 0, 130, 0.4),
+    rgba(0, 0, 0, 0.5)
+  );
+  border-left: 2px solid rgba(139, 0, 0, 0.8);
+  border-right: 2px solid rgba(139, 0, 0, 0.8);
+  animation: death-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes death-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 20px rgba(139, 0, 0, 0.5);
+  }
+  50% {
+    box-shadow: inset 0 0 40px rgba(75, 0, 130, 0.7);
+  }
+}
+
+.death-skull {
+  position: absolute;
+  font-size: 2rem;
+  animation: death-float 3s ease-in-out infinite;
+  opacity: 0.7;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.skull-1 {
+  top: 20%;
+  left: 30%;
+  animation-delay: 0s;
+}
+
+.skull-2 {
+  top: 60%;
+  left: 70%;
+  animation-delay: 1.5s;
+}
+
+@keyframes death-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(5deg);
+  }
+}
+
+/* Hole trap */
+.lane-speed-trap.trap-hole {
+  background: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0.6) 0%,
+    rgba(50, 50, 50, 0.4) 50%,
+    rgba(100, 100, 100, 0.2) 100%
+  );
+  border-left: 2px dashed rgba(100, 100, 100, 0.6);
+  border-right: 2px dashed rgba(100, 100, 100, 0.6);
 }
 
 /* Duck bị trúng meteor - rung + đỏ */
@@ -2937,4 +3210,236 @@ body {
 .karma-lesson {
   color: #f87171 !important;
   font-size: 1.5rem !important;
+}
+
+/* === 😎 ROAST MESSAGE - Câu châm biếm === */
+.roast-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2001;
+  pointer-events: none;
+  animation: roast-slide-in 0.4s ease-out;
+}
+
+@keyframes roast-slide-in {
+  from {
+    transform: translate(-50%, -100%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%);
+    opacity: 1;
+  }
+}
+
+.roast-box {
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  border: 3px solid;
+  border-radius: 20px;
+  padding: 32px 48px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  min-width: 400px;
+  max-width: 600px;
+  animation: roast-bounce 0.5s ease-out;
+}
+
+.roast-overlay.roast-correct .roast-box {
+  border-color: #22c55e;
+  background: linear-gradient(135deg, #064e3b, #065f46);
+}
+
+.roast-overlay.roast-wrong .roast-box {
+  border-color: #ef4444;
+  background: linear-gradient(135deg, #7f1d1d, #991b1b);
+}
+
+@keyframes roast-bounce {
+  0% {
+    transform: scale(0.5);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.roast-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  animation: roast-spin 0.6s ease-out;
+}
+
+@keyframes roast-spin {
+  from {
+    transform: rotate(-180deg) scale(0);
+  }
+  to {
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+.roast-box h2 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.roast-overlay.roast-correct .roast-box h2 {
+  color: #22c55e;
+  text-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+}
+
+.roast-overlay.roast-wrong .roast-box h2 {
+  color: #ef4444;
+  text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+}
+
+.roast-text {
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1.6;
+  margin: 16px 0;
+  font-weight: 500;
+}
+
+.roast-streak {
+  color: #fbbf24;
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-top: 12px;
+  animation: roast-pulse 1s ease-in-out infinite;
+}
+
+@keyframes roast-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* === 🎆 VICTORY CELEBRATION - Pháo hoa chiến thắng === */
+.victory-celebration {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.fireworks-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.firework {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  animation: firework-launch 1s ease-out infinite;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+@keyframes firework-launch {
+  0% {
+    transform: translateY(100vh) scale(0);
+    opacity: 1;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+}
+
+.firework-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: hsl(var(--hue), 100%, 60%);
+  border-radius: 50%;
+  box-shadow: 0 0 10px hsl(var(--hue), 100%, 60%),
+    0 0 20px hsl(var(--hue), 100%, 60%);
+  animation: firework-explode 1s ease-out infinite;
+  transform-origin: center;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  --distance: 100px;
+}
+@keyframes firework-explode {
+  0% {
+    transform: rotate(var(--angle)) translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(var(--angle)) translateX(var(--distance)) scale(0);
+    opacity: 0;
+  }
+}
+
+.victory-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 10001;
+  pointer-events: auto;
+  animation: victory-zoom 0.5s ease-out;
+}
+
+.victory-message h1 {
+  font-size: 4rem;
+  color: #fbbf24;
+  text-shadow: 0 0 20px #fbbf24, 0 0 40px #f59e0b,
+    2px 2px 4px rgba(0, 0, 0, 0.8);
+  margin: 0;
+  animation: victory-pulse 1s ease-in-out infinite;
+}
+
+.victory-message p {
+  font-size: 2rem;
+  color: #fff;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  margin-top: 20px;
+}
+
+@keyframes victory-zoom {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes victory-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
