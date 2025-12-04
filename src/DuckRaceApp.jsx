@@ -52,22 +52,102 @@ const STREAK_FOR_POWERUP = 3; // Đúng 3 câu liên tiếp = nhận power-up
 // --- CÂU HỎI VỀ TƯ TƯỞNG HỒ CHÍ MINH ---
 const QUESTIONS = [
   {
+    q: "Theo Hồ Chí Minh, để công tác vận động quần chúng đạt hiệu quả, phương pháp tiếp cận không chỉ cần phù hợp với tâm tư nguyện vọng mà còn phải xuất phát từ yếu tố thực tế nào?",
+    options: [
+      "Xuất phát từ mệnh lệnh của cấp trên",
+      "Xuất phát từ thực tế trình độ dân trí và văn hoá",
+      "Xuất phát từ nguồn lực tài chính của địa phương",
+      "Xuất phát từ kinh nghiệm chủ quan của cán bộ",
+    ],
+    answer: 1,
+  },
+  {
+    q: "Trong khối đại đoàn kết dân tộc, các đoàn thể và tổ chức quần chúng (như Công đoàn, Đoàn Thanh niên...) được ví như điều gì trong mối quan hệ giữa Đảng, Chính phủ và Nhân dân?",
+    options: [
+      "Là cơ quan giám sát hành chính",
+      "Là lực lượng vũ trang bảo vệ",
+      "Là sợi dây gắn kết / liên lạc mật thiết",
+      "Là đơn vị tài trợ kinh tế",
+    ],
+    answer: 2,
+  },
+  {
+    q: "Hoàn thành câu nói nổi tiếng của Hồ Chí Minh về chiến lược công tác vận động quần chúng: 'Đoàn kết, đoàn kết, đại đoàn kết. _______, _______, đại _______!'",
+    options: [
+      "Chiến thắng, chiến thắng, đại chiến thắng",
+      "Phát triển, phát triển, đại phát triển",
+      "Thành công, thành công, đại thành công",
+      "Hạnh phúc, hạnh phúc, đại hạnh phúc",
+    ],
+    answer: 2,
+  },
+  {
+    q: "Nguyên tắc nào quy định rằng các thành viên trong Mặt trận phải tôn trọng lẫn nhau, cùng nhau bàn bạc, thỏa thuận khi có vấn đề chung, đảm bảo sự đồng thuận?",
+    options: [
+      "Tự phê bình và phê bình",
+      "Đoàn kết trên cơ sở lợi ích dân tộc",
+      "Hiệp thương dân chủ",
+      "Đoàn kết rộng rãi",
+    ],
+    answer: 2,
+  },
+  {
+    q: "Trong Tư tưởng Hồ Chí Minh, để củng cố và tăng cường Mặt trận dân tộc thống nhất, phải thường xuyên thực hiện nguyên tắc nào nhằm giúp các thành viên vượt qua sai lầm, khuyết điểm, từ đó giúp nhau cùng tiến bộ?",
+    options: [
+      "Hiệp thương dân chủ",
+      "Lãnh đạo tuyệt đối của Đảng",
+      "Đoàn kết rộng rãi, không phân biệt",
+      "Thực hiện tự phê bình và phê bình",
+    ],
+    answer: 3,
+  },
+  {
+    q: "Để đảm bảo khối đại đoàn kết được duy trì vững chắc và cùng nhau tiến bộ, Hồ Chí Minh yêu cầu các thành viên trong Mặt trận phải thực hiện phương châm hoạt động nào?",
+    options: [
+      "Thống nhất ý kiến và hành động tuyệt đối trong mọi vấn đề",
+      "Ưu tiên phát triển các tổ chức thành viên có ảnh hưởng nhất",
+      "Tự do cạnh tranh, tôn trọng lợi ích cá nhân",
+      "Đoàn kết lâu dài, thật thà, thân ái, giúp đỡ nhau cùng tiến bộ",
+    ],
+    answer: 3,
+  },
+  {
+    q: "Cùng hướng vào mục tiêu chung, Hồ Chí Minh đã đặt ra tiêu chí ban đầu nào để tập hợp tất cả mọi người dân vào khối thống nhất?",
+    options: [
+      "Mọi người dân đều phải là thành viên chính thức của Mặt trận Tổ quốc Việt Nam",
+      "Phải có bằng cấp cao và kinh nghiệm lãnh đạo",
+      "Ai có tài, có đức, có sức, có lòng phụng sự Tổ quốc và phục vụ nhân dân thì ta đoàn kết với họ",
+      "Phải là công nhân hoặc nông dân trung thành",
+    ],
+    answer: 2,
+  },
+  {
+    q: "Hồ Chí Minh chỉ rõ, trong quá trình xây dựng khối đại đoàn kết toàn dân tộc, cần phải đứng vững trên lập trường nào để đảm bảo sự định hướng cho khối đoàn kết?",
+    options: [
+      "Lập trường của tầng lớp trí thức",
+      "Lập trường của Mặt trận Tổ quốc Việt Nam",
+      "Lập trường của giai cấp nông dân",
+      "Lập trường giai cấp công nhân",
+    ],
+    answer: 3,
+  },
+  {
+    q: "Vai trò xuyên suốt và quan trọng nhất của tư tưởng Đại đoàn kết toàn dân tộc Hồ Chí Minh là gì?",
+    options: [
+      "Giúp Đảng Cộng sản Việt Nam định hướng chính sách kinh tế vĩ mô",
+      "Đảm bảo sự lãnh đạo của giai cấp công nhân trong mọi thời kỳ",
+      "Định hướng cho việc xây dựng khối đại đoàn kết toàn dân tộc trong suốt tiến trình cách mạng Việt Nam, từ cách mạng dân tộc dân chủ nhân dân đến cách mạng xã hội chủ nghĩa",
+      "Chỉ tập trung giải quyết hài hòa mối quan hệ giữa các dân tộc anh em",
+    ],
+    answer: 2,
+  },
+  {
     q: "Theo Hồ Chí Minh, đại đoàn kết dân tộc là gì?",
     options: [
       "Chỉ đoàn kết trong Đảng",
       "Đoàn kết toàn dân tộc, không phân biệt giai cấp, tôn giáo, dân tộc",
       "Đoàn kết giữa các nước xã hội chủ nghĩa",
       "Đoàn kết trong quân đội",
-    ],
-    answer: 1,
-  },
-  {
-    q: "Câu nói nổi tiếng nào của Bác Hồ thể hiện tư tưởng đại đoàn kết?",
-    options: [
-      "Không có gì quý hơn độc lập tự do",
-      "Đoàn kết, đoàn kết, đại đoàn kết. Thành công, thành công, đại thành công",
-      "Dễ trăm lần không dân cũng chịu",
-      "Vì lợi ích mười năm trồng cây",
     ],
     answer: 1,
   },
@@ -120,11 +200,11 @@ const QUESTIONS = [
     q: "Hồ Chí Minh nhấn mạnh phải đoàn kết với đối tượng nào?",
     options: [
       "Chỉ những người cùng chính kiến",
-      "Tất cả những ai có lòng yêu nước, kể cả người từng lầm đường lạc lối",
       "Chỉ công nhân và nông dân",
       "Chỉ người trong Đảng",
+      "Tất cả những ai có lòng yêu nước, kể cả người từng lầm đường lạc lối",
     ],
-    answer: 1,
+    answer: 3,
   },
   {
     q: "Theo Bác Hồ, muốn đoàn kết tốt cần phải làm gì?",
@@ -140,15 +220,35 @@ const QUESTIONS = [
     q: "Di chúc của Chủ tịch Hồ Chí Minh nhắn nhủ điều gì về đoàn kết?",
     options: [
       "Đoàn kết quốc tế là quan trọng nhất",
-      "Đoàn kết trong Đảng là hạt nhân, phải giữ gìn sự đoàn kết như giữ gìn con ngươi của mắt mình",
       "Đoàn kết chỉ cần trong thời chiến",
+      "Đoàn kết trong Đảng là hạt nhân, phải giữ gìn sự đoàn kết như giữ gìn con ngươi của mắt mình",
       "Đoàn kết không cần thiết nếu có sức mạnh",
+    ],
+    answer: 2,
+  },
+  {
+    q: "Theo Hồ Chí Minh, phẩm chất quan trọng nhất của người cán bộ là gì?",
+    options: [
+      "Tài giỏi",
+      "Trung với nước, hiếu với dân",
+      "Giàu có",
+      "Ngoại hình đẹp",
     ],
     answer: 1,
   },
+  {
+    q: "Bác Hồ đã viết tác phẩm nào về đạo đức cách mạng?",
+    options: [
+      "Nhật ký trong tù",
+      "Đường Kách Mệnh",
+      "Sửa đổi lối làm việc",
+      "Tuyên ngôn độc lập",
+    ],
+    answer: 2,
+  },
 ];
 
-const TOTAL_QUESTIONS = QUESTIONS.length;
+const TOTAL_QUESTIONS = 20; // Giới hạn hiển thị 20 câu, sau đó lặp lại
 const FINISH_LINE = 100; // % để về đích
 const STEP_PER_CLICK = 2; // Mỗi click/space tiến bao nhiêu %
 const POINTS_CORRECT = 10;
@@ -1034,7 +1134,7 @@ export default function DuckRaceApp() {
     });
   };
 
-  const nextQuestion = async () => {
+  const nextQuestion = useCallback(async () => {
     const nextIndex = gameState.currentQuestionIndex + 1;
     const gameStateRef = doc(
       db,
@@ -1047,7 +1147,30 @@ export default function DuckRaceApp() {
     );
 
     if (nextIndex >= TOTAL_QUESTIONS) {
-      await updateDoc(gameStateRef, { status: "finished" });
+      // Khi hết 20 câu, quay lại câu 0 và tăng số vòng
+      const newRound = (gameState.totalRounds || 0) + 1;
+
+      // Reset vị trí cho vòng mới
+      const playersRef = collection(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "players"
+      );
+      const snap = await getDocs(playersRef);
+      snap.forEach((d) => {
+        updateDoc(d.ref, { position: 0 });
+      });
+
+      await updateDoc(gameStateRef, {
+        status: "racing",
+        currentQuestionIndex: 0, // Quay lại câu đầu
+        totalRounds: newRound,
+        winnerId: null,
+        winnerAnswer: null,
+      });
     } else {
       // Reset vị trí cho vòng mới
       const playersRef = collection(
@@ -1070,6 +1193,22 @@ export default function DuckRaceApp() {
         winnerAnswer: null,
       });
     }
+  }, [gameState.currentQuestionIndex, gameState.totalRounds]);
+  const stopGame = async () => {
+    if (!window.confirm("Dừng game và tổng kết?")) return;
+
+    const gameStateRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "game_config",
+      "gameState"
+    );
+    await updateDoc(gameStateRef, {
+      status: "finished",
+    });
   };
 
   const resetGame = async () => {
@@ -1087,6 +1226,7 @@ export default function DuckRaceApp() {
       currentQuestionIndex: 0,
       winnerId: null,
       winnerAnswer: null,
+      totalRounds: 0,
     });
 
     const playersRef = collection(
@@ -1246,21 +1386,38 @@ export default function DuckRaceApp() {
     }
   };
 
+  // === AUTO NEXT QUESTION: Tự động chuyển câu sau 3 giây khi showing_answer ===
+  useEffect(() => {
+    if (gameState.status === "showing_answer" && isAdmin) {
+      const timer = setTimeout(() => {
+        nextQuestion();
+      }, 3000); // 3 giây
+
+      return () => clearTimeout(timer);
+    }
+  }, [gameState.status, isAdmin, nextQuestion]);
+
   // --- RENDER HELPERS ---
   const myPlayer = players.find((p) => p.id === playerId);
-  const currentQuestion = QUESTIONS[gameState.currentQuestionIndex];
+  const currentQuestion =
+    QUESTIONS[gameState.currentQuestionIndex % QUESTIONS.length]; // Lặp lại câu hỏi
   const winner = players.find((p) => p.id === gameState.winnerId);
   const top3Players = [...players]
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
   const sortedByPosition = [...players].sort((a, b) => b.position - a.position);
 
+  const currentRound = gameState.totalRounds || 0;
+  const questionInRound = gameState.currentQuestionIndex + 1;
+  const totalAnswered =
+    currentRound * TOTAL_QUESTIONS + gameState.currentQuestionIndex;
+
   const statusText =
     {
       waiting: "CHỜ BẮT ĐẦU",
-      racing: `🏁 ĐUA ĐI! - Câu ${
-        gameState.currentQuestionIndex + 1
-      }/${TOTAL_QUESTIONS}`,
+      racing: `🏁 ĐUA ĐI! - Câu ${questionInRound}/${TOTAL_QUESTIONS} (Vòng ${
+        currentRound + 1
+      })`,
       answering: "⏳ ĐANG TRẢ LỜI...",
       showing_answer: "📝 XEM ĐÁP ÁN",
       finished: "🏆 KẾT THÚC",
@@ -1349,17 +1506,18 @@ export default function DuckRaceApp() {
                     <Play className="icon-xs" /> BẮT ĐẦU ĐUA
                   </button>
                 )}
-                {gameState.status === "showing_answer" && (
-                  <button onClick={nextQuestion} className="btn btn-next">
-                    <ChevronRight className="icon-xs" />
-                    {gameState.currentQuestionIndex + 1 >= TOTAL_QUESTIONS
-                      ? "KẾT THÚC"
-                      : "CÂU TIẾP"}
+                {(gameState.status === "racing" ||
+                  gameState.status === "answering" ||
+                  gameState.status === "showing_answer") && (
+                  <button onClick={stopGame} className="btn btn-danger">
+                    ⏹️ DỪNG GAME
                   </button>
                 )}
-                <button onClick={resetGame} className="btn btn-reset">
-                  <RefreshCw className="icon-xs" /> RESET
-                </button>
+                {gameState.status === "waiting" && (
+                  <button onClick={resetGame} className="btn btn-reset">
+                    <RefreshCw className="icon-xs" /> RESET
+                  </button>
+                )}
                 <button onClick={removeAllPlayers} className="btn btn-danger">
                   <Trash2 className="icon-xs" /> XÓA HẾT
                 </button>
@@ -1394,7 +1552,8 @@ export default function DuckRaceApp() {
             {gameState.status === "racing" && (
               <div className="race-view">
                 <h2 className="race-title">
-                  🏁 ĐANG ĐUA - Câu {gameState.currentQuestionIndex + 1}
+                  🏁 ĐANG ĐUA - Câu {gameState.currentQuestionIndex + 1}/
+                  {TOTAL_QUESTIONS} (Vòng {(gameState.totalRounds || 0) + 1})
                 </h2>
                 <div className="race-track-container">
                   <div className="finish-line">
@@ -2071,8 +2230,28 @@ export default function DuckRaceApp() {
               </div>
             </div>
 
+            <div className="game-stats">
+              <h3>📊 THỐNG KÊ GAME</h3>
+              <div className="stats-grid">
+                <div className="stat-item">
+                  <div className="stat-label">Tổng vòng chơi:</div>
+                  <div className="stat-value">
+                    {(gameState.totalRounds || 0) + 1}
+                  </div>
+                </div>
+                <div className="stat-item">
+                  <div className="stat-label">Tổng câu hỏi:</div>
+                  <div className="stat-value">{totalAnswered}</div>
+                </div>
+                <div className="stat-item">
+                  <div className="stat-label">Số người chơi:</div>
+                  <div className="stat-value">{players.length}</div>
+                </div>
+              </div>
+            </div>
+
             <div className="full-results">
-              <h3>📊 Bảng xếp hạng đầy đủ</h3>
+              <h3>🏆 BẢNG XẾP HẠNG CUỐI CÙNG</h3>
               <div className="results-list">
                 {[...players]
                   .sort((a, b) => b.score - a.score)
