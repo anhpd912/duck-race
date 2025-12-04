@@ -421,6 +421,27 @@ export default function DuckRaceApp() {
   const [macroWarning, setMacroWarning] = useState(false); // Hiện cảnh báo macro
   const isAdmin =
     new URLSearchParams(window.location.search).get("admin") === "true";
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false); // Xác thực admin
+  const [adminPassword, setAdminPassword] = useState(""); // Mật khẩu admin nhập vào
+  const ADMIN_PASSWORD = "091204"; // Mật khẩu admin
+
+  // --- ADMIN PASSWORD CHECK ---
+  const handleAdminLogin = () => {
+    if (adminPassword === ADMIN_PASSWORD) {
+      setAdminAuthenticated(true);
+      sessionStorage.setItem("adminAuth", "true"); // Lưu vào session
+    } else {
+      alert("❌ Mật khẩu không đúng!");
+      setAdminPassword("");
+    }
+  };
+
+  // Khôi phục admin auth từ session
+  useEffect(() => {
+    if (isAdmin && sessionStorage.getItem("adminAuth") === "true") {
+      setAdminAuthenticated(true);
+    }
+  }, [isAdmin]);
 
   // --- AUTH ---
   useEffect(() => {
@@ -1596,7 +1617,36 @@ export default function DuckRaceApp() {
         )}
 
         {/* ADMIN VIEW */}
-        {isAdmin && gameState.status !== "finished" && (
+        {isAdmin && !adminAuthenticated && (
+          <div className="login-container">
+            <div className="login-box">
+              <h1 style={{ marginBottom: "10px" }}>🔐 ĐĂNG NHẬP ADMIN</h1>
+              <p style={{ marginBottom: "20px", color: "#9ca3af" }}>
+                Nhập mật khẩu để truy cập
+              </p>
+              <input
+                type="password"
+                className="login-input"
+                placeholder="Nhập mật khẩu..."
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdminLogin()}
+                autoFocus
+              />
+              <button
+                onClick={handleAdminLogin}
+                disabled={!adminPassword.trim()}
+                className="btn btn-primary"
+                style={{ marginTop: "10px" }}
+              >
+                🔓 XÁC NHẬN
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ADMIN VIEW */}
+        {isAdmin && adminAuthenticated && gameState.status !== "finished" && (
           <div className="game-container">
             <div className="control-panel">
               <div className="control-left">
@@ -2433,7 +2483,7 @@ export default function DuckRaceApp() {
               </div>
             </div>
 
-            {isAdmin && (
+            {isAdmin && adminAuthenticated && (
               <button onClick={resetGame} className="btn btn-play-again">
                 <RefreshCw className="icon-sm" /> CHƠI LẠI
               </button>
