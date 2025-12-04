@@ -297,7 +297,7 @@ export default function DuckRaceApp() {
   const [isInSpeedTrap, setIsInSpeedTrap] = useState(null); // Đang trong vùng bẫy nào
 
   // === SIÊU CAY STATES ===
-  const [meteorStrike, setMeteorStrike] = useState(null); // Thiên thạch đang rơi vào ai
+  const [meteorStrike, setMeteorStrike] = useState(null); // { victim, victimId } - Thiên thạch đang rơi vào ai
   const [bountyTarget, setBountyTarget] = useState(null); // Người có bounty trên đầu
   const [karmaNotify, setKarmaNotify] = useState(null); // Thông báo karma backfire
 
@@ -608,9 +608,9 @@ export default function DuckRaceApp() {
       const newVictimPos = Math.max(0, (victim.position || 0) - METEOR_PENALTY);
       await updateDoc(victimRef, { position: newVictimPos });
 
-      // Hiện thông báo thiên thạch
-      setMeteorStrike(victim);
-      setTimeout(() => setMeteorStrike(null), 2500);
+      // Hiện thông báo thiên thạch với ID nạn nhân
+      setMeteorStrike({ victim, victimId: victim.id });
+      setTimeout(() => setMeteorStrike(null), 3000);
     }
 
     // === 🎯 BOUNTY HUNTER: Kiểm tra vượt qua người có bounty ===
@@ -1404,10 +1404,22 @@ export default function DuckRaceApp() {
                           style={{ width: `${p.position}%` }}
                         />
                         <div
-                          className="duck"
+                          className={`duck ${
+                            meteorStrike?.victimId === p.id ? "meteor-hit" : ""
+                          }`}
                           style={{ left: `${p.position}%` }}
                         >
                           {p.avatar}
+                          {/* Meteor falling on this duck (Admin view) */}
+                          {meteorStrike?.victimId === p.id && (
+                            <div className="meteor-strike-effect">
+                              <span className="meteor-falling">☄️</span>
+                              <div className="meteor-explosion"></div>
+                              <span className="meteor-damage-text">
+                                -{METEOR_PENALTY}%
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1634,10 +1646,22 @@ export default function DuckRaceApp() {
                         <div
                           className={`duck ${
                             p.id === playerId ? "duck-me" : ""
+                          } ${
+                            meteorStrike?.victimId === p.id ? "meteor-hit" : ""
                           }`}
                           style={{ left: `${p.position}%` }}
                         >
                           {p.avatar}
+                          {/* Meteor falling on this duck */}
+                          {meteorStrike?.victimId === p.id && (
+                            <div className="meteor-strike-effect">
+                              <span className="meteor-falling">☄️</span>
+                              <div className="meteor-explosion"></div>
+                              <span className="meteor-damage-text">
+                                -{METEOR_PENALTY}%
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2222,26 +2246,30 @@ export default function DuckRaceApp() {
           </div>
         )}
 
-        {/* === RANDOM EVENT NOTIFICATION === */}
+        {/* === RANDOM EVENT NOTIFICATION - với hiệu ứng sóng === */}
         {activeRandomEvent && (
-          <div className="random-event-overlay">
+          <div className={`random-event-overlay event-${activeRandomEvent.id}`}>
+            {/* Wave effect */}
+            <div className="event-wave wave-1"></div>
+            <div className="event-wave wave-2"></div>
+            <div className="event-wave wave-3"></div>
+
             <div className="random-event-box">
+              <div className="event-icon-large">
+                {activeRandomEvent.name.split(" ")[0]}
+              </div>
               <h2>{activeRandomEvent.name}</h2>
               <p className="event-desc">{activeRandomEvent.desc}</p>
             </div>
           </div>
         )}
 
-        {/* === ☄️ THIÊN THẠCH NOTIFICATION === */}
+        {/* === ☄️ THIÊN THẠCH - Screen flash effect === */}
         {meteorStrike && (
-          <div className="meteor-overlay">
-            <div className="meteor-box">
-              <div className="meteor-icon">☄️</div>
-              <h2>THIÊN THẠCH!</h2>
-              <p className="meteor-victim">
-                {meteorStrike.avatar} {meteorStrike.name} bị trúng!
-              </p>
-              <p className="meteor-damage">-{METEOR_PENALTY}% quãng đường!</p>
+          <div className="meteor-screen-flash">
+            <div className="meteor-alert">
+              ☄️ {meteorStrike.victim.avatar} {meteorStrike.victim.name} bị
+              thiên thạch!
             </div>
           </div>
         )}
