@@ -208,6 +208,14 @@ const SPEED_TRAP_ZONES = [
 const SPEED_TRAP_PENALTY = 0.5; // Chậm 50% khi trong trap
 const RANDOM_EVENT_CHANCE = 0.03; // 3% mỗi lần click
 
+// === SIÊU CAY FEATURES ===
+const METEOR_CHANCE = 0.02; // 2% mỗi click có thiên thạch rơi
+const METEOR_PENALTY = 30; // Thiên thạch trừ 30%
+const BOUNTY_THRESHOLD = 60; // Người đứng nhất ở 60%+ có bounty
+const BOUNTY_STEAL_PERCENT = 0.5; // Cướp 50% điểm khi vượt qua
+const KARMA_BACKFIRE_CHANCE = 0.5; // 50% skill tự backfire khi karma cao
+const KARMA_THRESHOLD = 3; // Karma >= 3 thì bị backfire
+
 const AVATARS = [
   "🦆",
   "🐥",
@@ -287,6 +295,11 @@ export default function DuckRaceApp() {
   const [sniperCooldown, setSniperCooldown] = useState(false); // Đã bắn chưa trong round này
   const [activeRandomEvent, setActiveRandomEvent] = useState(null); // Sự kiện random đang hiện
   const [isInSpeedTrap, setIsInSpeedTrap] = useState(null); // Đang trong vùng bẫy nào
+
+  // === SIÊU CAY STATES ===
+  const [meteorStrike, setMeteorStrike] = useState(null); // Thiên thạch đang rơi vào ai
+  const [bountyTarget, setBountyTarget] = useState(null); // Người có bounty trên đầu
+  const [karmaNotify, setKarmaNotify] = useState(null); // Thông báo karma backfire
 
   const lastPressTime = useRef(0);
   const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
@@ -566,6 +579,7 @@ export default function DuckRaceApp() {
     }
 
     const newPosition = Math.min(myPlayer.position + step, FINISH_LINE);
+    const oldPosition = myPlayer.position;
 
     // Cập nhật vị trí
     const playerRef = doc(
@@ -578,6 +592,73 @@ export default function DuckRaceApp() {
       playerId
     );
     await updateDoc(playerRef, { position: newPosition });
+
+    // === ☄️ THIÊN THẠCH: 2% chance mỗi click ===
+    if (Math.random() < METEOR_CHANCE && players.length > 1) {
+      const victim = players[Math.floor(Math.random() * players.length)];
+      const victimRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "players",
+        victim.id
+      );
+      const newVictimPos = Math.max(0, (victim.position || 0) - METEOR_PENALTY);
+      await updateDoc(victimRef, { position: newVictimPos });
+
+      // Hiện thông báo thiên thạch
+      setMeteorStrike(victim);
+      setTimeout(() => setMeteorStrike(null), 2500);
+    }
+
+    // === 🎯 BOUNTY HUNTER: Kiểm tra vượt qua người có bounty ===
+    const leader = [...players].sort((a, b) => b.position - a.position)[0];
+    if (
+      leader &&
+      leader.id !== playerId &&
+      leader.position >= BOUNTY_THRESHOLD
+    ) {
+      setBountyTarget(leader);
+
+      // Kiểm tra có vượt qua leader không
+      if (oldPosition <= leader.position && newPosition > leader.position) {
+        // VƯỢT QUA! Cướp 50% điểm
+        const stolenPoints = Math.floor(
+          (leader.score || 0) * BOUNTY_STEAL_PERCENT
+        );
+        if (stolenPoints > 0) {
+          const leaderRef = doc(
+            db,
+            "artifacts",
+            appId,
+            "public",
+            "data",
+            "players",
+            leader.id
+          );
+          await updateDoc(leaderRef, {
+            score: (leader.score || 0) - stolenPoints,
+          });
+          await updateDoc(playerRef, {
+            score: (myPlayer.score || 0) + stolenPoints,
+          });
+
+          // Tăng karma cho người cướp
+          await updateDoc(playerRef, { karma: (myPlayer.karma || 0) + 1 });
+
+          setKarmaNotify({
+            type: "steal",
+            points: stolenPoints,
+            from: leader.name,
+          });
+          setTimeout(() => setKarmaNotify(null), 2500);
+        }
+      }
+    } else {
+      setBountyTarget(null);
+    }
 
     // === RANDOM EVENT: 3% chance mỗi click ===
     if (Math.random() < RANDOM_EVENT_CHANCE && !activeRandomEvent) {
@@ -728,7 +809,30 @@ export default function DuckRaceApp() {
     const targetPlayer = players.find((p) => p.id === targetId);
     if (!targetPlayer || targetPlayer.position < SNIPER_THRESHOLD) return;
 
+    const myPlayer = players.find((p) => p.id === playerId);
+    const myKarma = myPlayer?.karma || 0;
+
     setSniperCooldown(true); // Chỉ được bắn 1 lần mỗi round
+
+    // === 🔥 KARMA BACKFIRE: Nếu karma >= 3, 50% tự bắn mình! ===
+    if (myKarma >= KARMA_THRESHOLD && Math.random() < KARMA_BACKFIRE_CHANCE) {
+      // BACKFIRE! Tự bắn mình!
+      const myRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "players",
+        playerId
+      );
+      const newMyPos = Math.max(0, (myPlayer?.position || 0) - SNIPER_PENALTY);
+      await updateDoc(myRef, { position: newMyPos });
+
+      setKarmaNotify({ type: "backfire", action: "SNIPER" });
+      setTimeout(() => setKarmaNotify(null), 2500);
+      return;
+    }
 
     const targetRef = doc(
       db,
@@ -743,6 +847,18 @@ export default function DuckRaceApp() {
     // Lùi target về max(0, position - SNIPER_PENALTY)
     const newPosition = Math.max(0, targetPlayer.position - SNIPER_PENALTY);
     await updateDoc(targetRef, { position: newPosition });
+
+    // Tăng karma
+    const myRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "players",
+      playerId
+    );
+    await updateDoc(myRef, { karma: myKarma + 1 });
 
     // Hiện thông báo
     setActivePowerUp({ type: "SNIPER", targetName: targetPlayer.name });
@@ -1423,26 +1539,24 @@ export default function DuckRaceApp() {
                       hỏi
                     </li>
                     <li>
-                      ⏱️ <strong>Thời gian:</strong> Có 7 giây để trả lời
+                      ✅ <strong>Đúng:</strong> +10 điểm | ⏱️ Hết giờ: -5 điểm
                     </li>
                     <li>
-                      ✅ <strong>Đúng:</strong> +10 điểm
+                      ☄️ <strong>Thiên thạch:</strong> Random rơi vào 1 người,
+                      -30%!
+                    </li>
+                    <li>
+                      💰 <strong>Bounty:</strong> Vượt người đứng đầu = cướp 50%
+                      điểm!
+                    </li>
+                    <li>
+                      🔥 <strong>Karma:</strong> Càng toxic càng dễ tự hại mình!
                     </li>
                     <li>
                       🎯 <strong>Sniper:</strong> Ai đạt 80%+ có thể bị BẮN lùi!
                     </li>
                     <li>
-                      🏴‍☠️ <strong>Cướp:</strong> Sau 4s có thể cướp quyền trả
-                      lời!
-                    </li>
-                    <li>
                       ⚠️ <strong>Speed Trap:</strong> Vùng đỏ = chậm 50%!
-                    </li>
-                    <li>
-                      🌋 <strong>Random Event:</strong> Sự kiện bất ngờ khi đua!
-                    </li>
-                    <li>
-                      🚫 <strong>Gian lận:</strong> Dùng macro sẽ bị phạt!
                     </li>
                   </ul>
                 </div>
@@ -2054,6 +2168,23 @@ export default function DuckRaceApp() {
                     </li>
                   </ul>
                 </div>
+                <div className="rule-section danger">
+                  <h3>💀 ULTRA CAY CÚ</h3>
+                  <ul>
+                    <li>
+                      ☄️ <strong>Thiên Thạch:</strong> 2% mỗi click = thiên
+                      thạch rơi vào 1 người random, -30% quãng đường!
+                    </li>
+                    <li>
+                      💰 <strong>Bounty Hunter:</strong> Người đứng đầu (60%+)
+                      có tiền thưởng! Vượt qua họ = CƯỚP 50% điểm!
+                    </li>
+                    <li>
+                      🔥 <strong>Karma:</strong> Càng toxic (snipe/cướp nhiều) =
+                      karma tăng! Khi karma ≥3, 50% skill sẽ TỰ BẮN MÌNH!
+                    </li>
+                  </ul>
+                </div>
                 <div className="rule-section">
                   <h3>⚡ VẬT PHẨM</h3>
                   <ul>
@@ -2097,6 +2228,57 @@ export default function DuckRaceApp() {
             <div className="random-event-box">
               <h2>{activeRandomEvent.name}</h2>
               <p className="event-desc">{activeRandomEvent.desc}</p>
+            </div>
+          </div>
+        )}
+
+        {/* === ☄️ THIÊN THẠCH NOTIFICATION === */}
+        {meteorStrike && (
+          <div className="meteor-overlay">
+            <div className="meteor-box">
+              <div className="meteor-icon">☄️</div>
+              <h2>THIÊN THẠCH!</h2>
+              <p className="meteor-victim">
+                {meteorStrike.avatar} {meteorStrike.name} bị trúng!
+              </p>
+              <p className="meteor-damage">-{METEOR_PENALTY}% quãng đường!</p>
+            </div>
+          </div>
+        )}
+
+        {/* === 🎯 BOUNTY TARGET INDICATOR === */}
+        {bountyTarget && gameState.status === "racing" && (
+          <div className="bounty-indicator">
+            <span className="bounty-icon">💰</span>
+            <span className="bounty-text">
+              BOUNTY: {bountyTarget.avatar} {bountyTarget.name}
+            </span>
+            <span className="bounty-reward">Vượt qua = Cướp 50% điểm!</span>
+          </div>
+        )}
+
+        {/* === 🔥 KARMA NOTIFICATION === */}
+        {karmaNotify && (
+          <div className={`karma-overlay ${karmaNotify.type}`}>
+            <div className="karma-box">
+              {karmaNotify.type === "steal" && (
+                <>
+                  <div className="karma-icon">💰</div>
+                  <h2>CƯỚP THÀNH CÔNG!</h2>
+                  <p>
+                    +{karmaNotify.points} điểm từ {karmaNotify.from}!
+                  </p>
+                  <p className="karma-warning">⚠️ Karma +1</p>
+                </>
+              )}
+              {karmaNotify.type === "backfire" && (
+                <>
+                  <div className="karma-icon">💀</div>
+                  <h2>KARMA BACKFIRE!</h2>
+                  <p>{karmaNotify.action} TỰ BẮN VÀO MÌNH!</p>
+                  <p className="karma-lesson">Ác giả ác báo! 😈</p>
+                </>
+              )}
             </div>
           </div>
         )}
