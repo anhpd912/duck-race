@@ -293,13 +293,15 @@ export default function DuckRaceApp() {
   const [sniperTarget, setSniperTarget] = useState(null); // Người đang ở 80%+ có thể bị bắn
   const [canStealAnswer, setCanStealAnswer] = useState(false); // Có thể cướp đáp án không
   const [sniperCooldown, setSniperCooldown] = useState(false); // Đã bắn chưa trong round này
-  const [activeRandomEvent, setActiveRandomEvent] = useState(null); // Sự kiện random đang hiện
   const [isInSpeedTrap, setIsInSpeedTrap] = useState(null); // Đang trong vùng bẫy nào
 
   // === SIÊU CAY STATES ===
-  const [meteorStrike, setMeteorStrike] = useState(null); // { victim, victimId } - Thiên thạch đang rơi vào ai
+  const [meteorStrike, setMeteorStrike] = useState(null); // { victim, victimId } - Thiên thạch đang rơi
+  const [globalMeteor, setGlobalMeteor] = useState(false); // Thiên thạch rơi từ trên trời
   const [bountyTarget, setBountyTarget] = useState(null); // Người có bounty trên đầu
   const [karmaNotify, setKarmaNotify] = useState(null); // Thông báo karma backfire
+  const [bananaLanes, setBananaLanes] = useState({}); // { playerId: position } - vỏ chuối trên từng lane
+  const [waveEffect, setWaveEffect] = useState(null); // Hiệu ứng sóng nhẹ + text
 
   const lastPressTime = useRef(0);
   const isKeyReleased = useRef(true); // Phải thả phím ra mới được bấm tiếp
@@ -431,7 +433,10 @@ export default function DuckRaceApp() {
 
     const event =
       RANDOM_EVENTS[Math.floor(Math.random() * RANDOM_EVENTS.length)];
-    setActiveRandomEvent(event);
+
+    // Hiện wave effect + text nhỏ thay vì popup to
+    setWaveEffect({ id: event.id, name: event.name, desc: event.desc });
+    setTimeout(() => setWaveEffect(null), 2500);
 
     const playersRef = collection(
       db,
@@ -443,7 +448,9 @@ export default function DuckRaceApp() {
     );
     const snap = await getDocs(playersRef);
     const playerDocs = [];
-    snap.forEach((d) => playerDocs.push({ ref: d.ref, data: d.data() }));
+    snap.forEach((d) =>
+      playerDocs.push({ ref: d.ref, data: d.data(), id: d.id })
+    );
 
     switch (event.effect) {
       case "knockback_all":
@@ -463,13 +470,27 @@ export default function DuckRaceApp() {
         }
         break;
       case "random_slip": {
-        // 1 người random lùi 20%
+        // 1 người random bị chuối - hiện vỏ chuối trên lane của họ
         if (playerDocs.length > 0) {
           const victim =
             playerDocs[Math.floor(Math.random() * playerDocs.length)];
+          const bananaPos = Math.random() * 80 + 10; // Random 10-90%
+
+          // Hiện vỏ chuối trên lane của nạn nhân
+          setBananaLanes((prev) => ({ ...prev, [victim.id]: bananaPos }));
+
           await updateDoc(victim.ref, {
             position: Math.max(0, (victim.data.position || 0) - 20),
           });
+
+          // Xóa chuối sau 2s
+          setTimeout(() => {
+            setBananaLanes((prev) => {
+              const newState = { ...prev };
+              delete newState[victim.id];
+              return newState;
+            });
+          }, 2000);
         }
         break;
       }
@@ -512,9 +533,6 @@ export default function DuckRaceApp() {
       default:
         break;
     }
-
-    // Ẩn thông báo sau 2.5 giây
-    setTimeout(() => setActiveRandomEvent(null), 2500);
   }, [players.length]);
 
   // --- KEYBOARD LISTENER FOR RACING ---
@@ -608,9 +626,13 @@ export default function DuckRaceApp() {
       const newVictimPos = Math.max(0, (victim.position || 0) - METEOR_PENALTY);
       await updateDoc(victimRef, { position: newVictimPos });
 
-      // Hiện thông báo thiên thạch với ID nạn nhân
+      // Hiện thiên thạch rơi từ trên trời + đánh dấu nạn nhân
+      setGlobalMeteor(true);
       setMeteorStrike({ victim, victimId: victim.id });
-      setTimeout(() => setMeteorStrike(null), 3000);
+      setTimeout(() => {
+        setGlobalMeteor(false);
+        setMeteorStrike(null);
+      }, 3000);
     }
 
     // === 🎯 BOUNTY HUNTER: Kiểm tra vượt qua người có bounty ===
@@ -661,7 +683,7 @@ export default function DuckRaceApp() {
     }
 
     // === RANDOM EVENT: 3% chance mỗi click ===
-    if (Math.random() < RANDOM_EVENT_CHANCE && !activeRandomEvent) {
+    if (Math.random() < RANDOM_EVENT_CHANCE && !waveEffect) {
       triggerRandomEvent();
     }
 
@@ -695,7 +717,7 @@ export default function DuckRaceApp() {
     gameState.status,
     gameState.winnerId,
     players,
-    activeRandomEvent,
+    waveEffect,
     triggerRandomEvent,
   ]);
 
@@ -1378,19 +1400,7 @@ export default function DuckRaceApp() {
                   <div className="finish-line">
                     <span>ĐÍCH</span>
                   </div>
-                  {/* Speed Trap Zones */}
-                  {SPEED_TRAP_ZONES.map((trap, idx) => (
-                    <div
-                      key={idx}
-                      className="speed-trap-zone"
-                      style={{
-                        left: `${trap.start}%`,
-                        width: `${trap.end - trap.start}%`,
-                      }}
-                      data-name={trap.name}
-                    />
-                  ))}
-                  {sortedByPosition.map((p) => (
+                  {sortedByPosition.map((p, playerIndex) => (
                     <div key={p.id} className="player-lane">
                       <div className="lane-info">
                         <span>
@@ -1399,6 +1409,32 @@ export default function DuckRaceApp() {
                         <span>{Math.round(p.position)}%</span>
                       </div>
                       <div className="lane-track">
+                        {/* Speed Trap Zone - riêng từng lane */}
+                        {SPEED_TRAP_ZONES.map((trap, idx) => {
+                          const offset = (((playerIndex + idx) * 7) % 15) - 7;
+                          return (
+                            <div
+                              key={idx}
+                              className="lane-speed-trap"
+                              style={{
+                                left: `${trap.start + offset}%`,
+                                width: `${trap.end - trap.start}%`,
+                              }}
+                              title={trap.name}
+                            />
+                          );
+                        })}
+
+                        {/* Vỏ chuối */}
+                        {bananaLanes[p.id] !== undefined && (
+                          <div
+                            className="banana-on-lane"
+                            style={{ left: `${bananaLanes[p.id]}%` }}
+                          >
+                            🍌
+                          </div>
+                        )}
+
                         <div
                           className="progress-bar"
                           style={{ width: `${p.position}%` }}
@@ -1410,16 +1446,6 @@ export default function DuckRaceApp() {
                           style={{ left: `${p.position}%` }}
                         >
                           {p.avatar}
-                          {/* Meteor falling on this duck (Admin view) */}
-                          {meteorStrike?.victimId === p.id && (
-                            <div className="meteor-strike-effect">
-                              <span className="meteor-falling">☄️</span>
-                              <div className="meteor-explosion"></div>
-                              <span className="meteor-damage-text">
-                                -{METEOR_PENALTY}%
-                              </span>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -1613,19 +1639,7 @@ export default function DuckRaceApp() {
                   <div className="finish-line">
                     <span>ĐÍCH</span>
                   </div>
-                  {/* Speed Trap Zones */}
-                  {SPEED_TRAP_ZONES.map((trap, idx) => (
-                    <div
-                      key={idx}
-                      className="speed-trap-zone"
-                      style={{
-                        left: `${trap.start}%`,
-                        width: `${trap.end - trap.start}%`,
-                      }}
-                      data-name={trap.name}
-                    />
-                  ))}
-                  {sortedByPosition.map((p) => (
+                  {sortedByPosition.map((p, playerIndex) => (
                     <div
                       key={p.id}
                       className={`player-lane ${
@@ -1639,6 +1653,32 @@ export default function DuckRaceApp() {
                         <span>{Math.round(p.position)}%</span>
                       </div>
                       <div className="lane-track">
+                        {/* Speed Trap Zone - riêng từng lane với offset random */}
+                        {SPEED_TRAP_ZONES.map((trap, idx) => {
+                          const offset = (((playerIndex + idx) * 7) % 15) - 7; // Random offset -7 to +7
+                          return (
+                            <div
+                              key={idx}
+                              className="lane-speed-trap"
+                              style={{
+                                left: `${trap.start + offset}%`,
+                                width: `${trap.end - trap.start}%`,
+                              }}
+                              title={trap.name}
+                            />
+                          );
+                        })}
+
+                        {/* Vỏ chuối trên lane này */}
+                        {bananaLanes[p.id] !== undefined && (
+                          <div
+                            className="banana-on-lane"
+                            style={{ left: `${bananaLanes[p.id]}%` }}
+                          >
+                            🍌
+                          </div>
+                        )}
+
                         <div
                           className="progress-bar"
                           style={{ width: `${p.position}%` }}
@@ -1652,16 +1692,6 @@ export default function DuckRaceApp() {
                           style={{ left: `${p.position}%` }}
                         >
                           {p.avatar}
-                          {/* Meteor falling on this duck */}
-                          {meteorStrike?.victimId === p.id && (
-                            <div className="meteor-strike-effect">
-                              <span className="meteor-falling">☄️</span>
-                              <div className="meteor-explosion"></div>
-                              <span className="meteor-damage-text">
-                                -{METEOR_PENALTY}%
-                              </span>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -2246,31 +2276,37 @@ export default function DuckRaceApp() {
           </div>
         )}
 
-        {/* === RANDOM EVENT NOTIFICATION - với hiệu ứng sóng === */}
-        {activeRandomEvent && (
-          <div className={`random-event-overlay event-${activeRandomEvent.id}`}>
-            {/* Wave effect */}
-            <div className="event-wave wave-1"></div>
-            <div className="event-wave wave-2"></div>
-            <div className="event-wave wave-3"></div>
-
-            <div className="random-event-box">
-              <div className="event-icon-large">
-                {activeRandomEvent.name.split(" ")[0]}
-              </div>
-              <h2>{activeRandomEvent.name}</h2>
-              <p className="event-desc">{activeRandomEvent.desc}</p>
+        {/* === 🌊 WAVE EFFECT - Sóng lướt qua + text nhỏ === */}
+        {waveEffect && (
+          <>
+            {/* Sóng lướt qua toàn màn hình */}
+            <div className={`wave-sweep wave-${waveEffect.id}`}>
+              <div className="wave-line wave-1"></div>
+              <div className="wave-line wave-2"></div>
+              <div className="wave-line wave-3"></div>
             </div>
-          </div>
+            {/* Text nhỏ ở trên */}
+            <div className="wave-text-bar">
+              <span className="wave-icon">{waveEffect.name.split(" ")[0]}</span>
+              <span className="wave-name">{waveEffect.name}</span>
+              <span className="wave-desc">{waveEffect.desc}</span>
+            </div>
+          </>
         )}
 
-        {/* === ☄️ THIÊN THẠCH - Screen flash effect === */}
+        {/* === ☄️ THIÊN THẠCH - Rơi từ trên trời xuống === */}
+        {globalMeteor && (
+          <div className="meteor-rain">
+            <div className="meteor-obj meteor-1">☄️</div>
+            <div className="meteor-obj meteor-2">☄️</div>
+            <div className="meteor-obj meteor-3">☄️</div>
+            <div className="meteor-flash"></div>
+          </div>
+        )}
         {meteorStrike && (
-          <div className="meteor-screen-flash">
-            <div className="meteor-alert">
-              ☄️ {meteorStrike.victim.avatar} {meteorStrike.victim.name} bị
-              thiên thạch!
-            </div>
+          <div className="meteor-victim-bar">
+            💥 {meteorStrike.victim.avatar} {meteorStrike.victim.name} bị thiên
+            thạch! -{METEOR_PENALTY}%
           </div>
         )}
 
