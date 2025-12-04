@@ -254,13 +254,13 @@ const QUESTIONS = [
 ];
 
 const TOTAL_QUESTIONS = 20; // Giới hạn hiển thị 20 câu, sau đó lặp lại
-const FINISH_LINE = 150; // % để về đích (tăng lên 150% để đường dài hơn)
-const STEP_PER_CLICK = 2; // Mỗi click/space tiến bao nhiêu %
+const FINISH_LINE = 100; // % để về đích
+const STEP_PER_CLICK = 1; // Mỗi click/space tiến bao nhiêu % (giảm từ 2 xuống 1 để chạy lâu hơn)
 const POINTS_CORRECT = 10;
 const POINTS_TIMEOUT = -5; // Trừ điểm khi hết giờ
 const ANSWER_TIME_LIMIT = 7; // Giây
-const SNIPER_THRESHOLD = 80; // % để có thể bị bắn tỉa
-const SNIPER_PENALTY = 30; // Bị bắn lùi bao nhiêu %
+const SNIPER_THRESHOLD = 55; // % để có thể bị bắn tỉa (giảm từ 80)
+const SNIPER_PENALTY = 20; // Bị bắn lùi bao nhiêu % (giảm từ 30)
 const STEAL_TIME_THRESHOLD = 4; // Sau 4 giây có thể cướp đáp án
 const STEAL_WRONG_PENALTY = -15; // Cướp mà sai thì -15 điểm
 
@@ -304,22 +304,22 @@ const RANDOM_EVENTS = [
   },
 ];
 
-// Speed Traps - Vùng bẫy trên đường đua
+// Speed Traps - Vùng bẫy trên đường đua (điều chỉnh lại cho FINISH_LINE = 100%)
 const SPEED_TRAP_ZONES = [
-  { start: 20, end: 30, name: "🕳️ HỐ XỊN", type: "hole" },
-  { start: 45, end: 55, name: "🧊 BĂNG TRƠN", type: "ice" },
-  { start: 70, end: 80, name: "🌊 SÓNG TO", type: "wave" },
-  { start: 95, end: 105, name: "⚡ ĐIỆN GIẬT", type: "electric" },
-  { start: 120, end: 130, name: "🔥 LỬA CHÁY", type: "fire" },
-  { start: 140, end: 148, name: "💀 TỬ THẦN", type: "death" },
+  { start: 15, end: 22, name: "🕳️ HỐ XỊN", type: "hole" },
+  { start: 30, end: 37, name: "🧊 BĂNG TRƠN", type: "ice" },
+  { start: 45, end: 52, name: "🌊 SÓNG TO", type: "wave" },
+  { start: 60, end: 67, name: "⚡ ĐIỆN GIẬT", type: "electric" },
+  { start: 75, end: 82, name: "🔥 LỬA CHÁY", type: "fire" },
+  { start: 88, end: 95, name: "💀 TỬ THẦN", type: "death" },
 ];
 const SPEED_TRAP_PENALTY = 0.5; // Chậm 50% khi trong trap
 const RANDOM_EVENT_CHANCE = 0.03; // 3% mỗi lần click
 
 // === SIÊU CAY FEATURES ===
 const METEOR_CHANCE = 0.02; // 2% mỗi click có thiên thạch rơi
-const METEOR_PENALTY = 30; // Thiên thạch trừ 30%
-const BOUNTY_THRESHOLD = 60; // Người đứng nhất ở 60%+ có bounty
+const METEOR_PENALTY = 20; // Thiên thạch trừ 20% (giảm từ 30)
+const BOUNTY_THRESHOLD = 40; // Người đứng nhất ở 40%+ có bounty (giảm từ 60)
 const BOUNTY_STEAL_PERCENT = 0.5; // Cướp 50% điểm khi vượt qua
 const KARMA_BACKFIRE_CHANCE = 0.5; // 50% skill tự backfire khi karma cao
 const KARMA_THRESHOLD = 3; // Karma >= 3 thì bị backfire
